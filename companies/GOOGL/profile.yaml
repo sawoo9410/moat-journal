@@ -1,0 +1,66 @@
+# GOOGL (Alphabet Inc.) — Moat Journal Profile
+ticker: GOOGL
+name: Alphabet Inc.
+aliases:
+  - Google
+  - 구글
+  - 알파벳
+  - Alphabet
+  - GOOG            # 클래스 C (의결권 없음)
+sector: Internet / Ad-tech / AI
+sub_segments:
+  - Search & Advertising
+  - YouTube
+  - Google Cloud (GCP)
+  - Android / Play
+  - DeepMind / Gemini
+  - Waymo
+established: 1998
+tracking_since: 2026-04-01     # 파일럿 시작일
+
+# 정적 관계 — 관련 기업 (교차 참조 옵션 A)
+# relation 값: customer / supplier / competitor / peer / sector-linked
+related:
+  - ticker: NVDA
+    relation: supplier
+    note: GPU 핵심 공급처. TPU 내재화로 의존 감소 방향.
+  - ticker: META
+    relation: competitor
+    note: 디지털 광고 및 AI 경쟁.
+  - ticker: MSFT
+    relation: competitor
+    note: AI(Copilot vs Gemini), Cloud(Azure vs GCP), 검색(Bing).
+  - ticker: QCOM
+    relation: peer
+    note: Android 생태계 공유(SoC).
+
+# 뉴스 소스
+# ⚠ URL 일부는 사용자 확인 필요 — 실제 구독 전 브라우저에서 검증 권장
+sources:
+  tier1:
+    - type: rss
+      label: Google The Keyword (공식 블로그)
+      url: https://blog.google/rss/
+    - type: web
+      label: Alphabet Investor Relations
+      url: https://abc.xyz/investor/
+  tier2:
+    - type: rss
+      label: The Verge — Google
+      url: https://www.theverge.com/rss/google/index.xml
+      # 무료 피드는 excerpts만. full-text는 유료 구독($7/월)
+    - type: rss
+      label: Ars Technica — 메인
+      url: https://feeds.arstechnica.com/arstechnica/index
+      # Google 전용 태그 피드는 존재하지 않음. 메인 피드 + 수집 단계에서
+      # "Google|Alphabet|Gemini" 키워드 필터링 필요
+    - type: rss
+      label: Ars Technica — AI 섹션
+      url: https://arstechnica.com/ai/feed/
+      # AI 관련 기사는 대부분 Google/Gemini 언급 포함 — 보조 소스
+  tier3:
+    - type: edgar
+      label: SEC EDGAR (Alphabet)
+      cik: "0001652044"
+      forms: [8-K, 10-Q, 10-K, DEF 14A]
+      url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001652044
