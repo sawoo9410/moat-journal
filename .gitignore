@@ -12,3 +12,12 @@
 .vscode/
 .idea/
 *.swp
+
+# 환경변수 / 시크릿
+.env
+.env.local
+*.key
+secrets/
+
+# 자동화 실행 산출물
+automation/data/
