@@ -121,6 +121,8 @@ spec status: `pending` → 적용 세션이 `applied` 로 변경. 폐기되면 `
 
 **일상 운영 절차** (한 사이클 흐름 / 트러블슈팅 / 빠른 시작 체크리스트): `docs/operations.md`. 본 §0.7은 룰·형식 정의, `operations.md`는 행동 매뉴얼.
 
+**분석 도메인 교훈**: `docs/lessons.md`. 사용자 교정 시 업데이트. 세션 시작 시 검토. 시스템 룰(memory/feedback_*.md)과 분리 — 여기는 moat 분석 판단 교훈만.
+
 ---
 
 ## 1. 목표 및 전제
