@@ -1,0 +1,12 @@
+tickers:
+  - GOOGL
+  - MCD
+  - KO
+
+paths:
+  companies_dir: "companies"
+  prompts_dir: "automation/prompts"
+
+schedule:
+  daily_hour: 9
+  timezone: "Asia/Seoul"
