@@ -11,4 +11,5 @@ if [ -f .env ]; then
 fi
 
 mkdir -p automation/logs
-python automation/src/daily_moat.py 2>&1 | tee -a automation/logs/daily.log
+PYTHON="${PYTHON:-/opt/homebrew/bin/python3}"
+"$PYTHON" automation/src/daily_moat.py 2>&1 | tee -a automation/logs/daily.log
