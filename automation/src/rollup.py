@@ -3,6 +3,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -131,7 +132,7 @@ ANNUAL_PROMPT = """다음은 {ticker} 종목의 {year}년 4개 분기 요약이�
 """
 
 
-def quarterly_rollup(ticker: str, year: int, quarter: int) -> Path | None:
+def quarterly_rollup(ticker: str, year: int, quarter: int) -> Optional[Path]:
     files = collect_daily_files(ticker, year, quarter)
     if not files:
         print(f"[rollup] {ticker} {year} Q{quarter}: daily 기록 없음", file=sys.stderr)
@@ -157,7 +158,7 @@ def quarterly_rollup(ticker: str, year: int, quarter: int) -> Path | None:
     return out
 
 
-def annual_rollup(ticker: str, year: int) -> Path | None:
+def annual_rollup(ticker: str, year: int) -> Optional[Path]:
     files = collect_quarterly_files(ticker, year)
     if not files:
         print(f"[rollup] {ticker} {year}: 분기 요약 없음", file=sys.stderr)

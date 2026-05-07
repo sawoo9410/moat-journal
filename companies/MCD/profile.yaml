@@ -1,0 +1,85 @@
+# MCD (McDonald's Corporation) — Moat Journal Profile
+ticker: MCD
+name: McDonald's Corporation
+aliases:
+  - McDonald's
+  - 맥도날드
+  - 맥날
+sector: QSR (Quick Service Restaurant) / Real Estate
+sub_segments:
+  - US Operations
+  - International Operated Markets (IOM)
+  - International Developmental Licensed Markets (IDL)
+  - Real Estate (franchise rent)
+established: 1940              # McDonald 형제 / 1955 Ray Kroc / 1965 IPO
+tracking_since: 2026-04-25     # MCD 파일럿 시작
+tracking_purpose:
+  - moat
+  - dividend                   # 배당주 추적 (§8.7)
+
+# 정적 관계
+related:
+  - ticker: KO
+    relation: peer
+    note: 매장 내 음료 독점 공급 계약 (수십 년). Consumer Staples 동조.
+  - ticker: SBUX
+    relation: competitor
+    note: QSR 음료/아침 메뉴 경쟁. 글로벌 브랜드 영향력 비교 대상.
+  - ticker: CMG
+    relation: peer
+    note: QSR 내 건강·프리미엄 포지셔닝 비교군.
+  - ticker: YUM
+    relation: competitor
+    note: KFC/Taco Bell/Pizza Hut. 글로벌 프랜차이즈 모델 직접 경쟁.
+
+# 뉴스 소스
+# ⚠ URL 일부는 사용자 확인 필요
+sources:
+  tier1:
+    - type: web
+      label: McDonald's Corporate (Press Releases)
+      url: https://corporate.mcdonalds.com/corpmcd/our-stories/article-list.html
+    - type: web
+      label: McDonald's Investor Relations
+      url: https://corporate.mcdonalds.com/corpmcd/investors-relations.html
+    - type: rss
+      label: McDonald's Newsroom RSS (확인 필요)
+      url: https://corporate.mcdonalds.com/rss
+  tier2:
+    - type: rss
+      label: Reuters — Restaurants
+      url: https://www.reuters.com/business/retail-consumer/rss
+    - type: rss
+      label: CNBC — Food & Beverage
+      url: https://www.cnbc.com/id/10000664/device/rss/rss.html
+    - type: web
+      label: Restaurant Business Online
+      url: https://www.restaurantbusinessonline.com/
+  tier3:
+    - type: edgar
+      label: SEC EDGAR (McDonald's)
+      cik: "0000063908"
+      forms: [8-K, 10-Q, 10-K, DEF 14A]
+      url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000063908
+
+# 일별 entry 키워드 필터 (수집 단계)
+keywords:
+  - McDonald's
+  - 맥도날드
+  - "MCD "
+  - Big Mac
+  - Quarter Pounder
+  - Chris Kempczinski        # 현 CEO (2019~)
+  - Ian Borden               # CFO (2022~)
+  - same-store sales         # SSSG
+  - franchise
+
+# Dividend 메타 (§8.7)
+dividend:
+  status: aristocrat               # 1976~ 매년 증액 (S&P 500 25년+)
+  consecutive_increase_years: 49   # 2024 기준 (사용자 확인 권장)
+  frequency: quarterly
+  pay_pattern: mid-Mar / mid-Jun / mid-Sep / mid-Dec
+  ex_div_pattern: 약 2~3주 전
+  last_announced_qtr_usd: 1.77     # 2024-10 발표분. 이후 갱신 시 dividend.md 동기화
+  next_review_trigger: Q4 increase announcement (통상 10월)
