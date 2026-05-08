@@ -78,12 +78,45 @@ def is_stable(parsed: dict) -> bool:
     return is_empty_or_none(parsed["bullish"]) and is_empty_or_none(parsed["bearish"])
 
 
-def save_daily(ticker: str, date: str, raw: str) -> Path:
-    daily_dir = ROOT / "companies" / ticker / "daily"
-    os.makedirs(daily_dir, exist_ok=True)
-    out = daily_dir / f"{date}.md"
+def append_monthly(ticker: str, date: str, raw: str) -> Path:
+    """일일 분석을 월간 누적 파일(companies/{TICKER}/{YYYY}/{YYYY-MM}.md)에 append.
+
+    포맷 (todo.md 4.2):
+      파일 없으면:
+        # {TICKER} — {YYYY}년 {M}월
+        \n
+        ## {YYYY-MM-DD}
+        \n
+        {분석}
+        \n
+        ---
+      파일 있으면 끝에 동일 entry 패턴(앞에 \n 한 줄 띄움) append.
+
+    같은 날짜 재실행 시: 기존 entry 건드리지 않고 끝에 append (정합성보다 단순함).
+    """
+    year_str, month_str, _ = date.split("-")
+    year = int(year_str)
+    month = int(month_str)
+
+    monthly_dir = ROOT / "companies" / ticker / year_str
+    os.makedirs(monthly_dir, exist_ok=True)
+    out = monthly_dir / f"{year_str}-{month_str}.md"
+
+    body = raw.rstrip("\n")
+    entry = f"## {date}\n\n{body}\n\n---\n"
+
+    if out.exists():
+        with open(out, "r", encoding="utf-8") as f:
+            existing = f.read()
+        if not existing.endswith("\n"):
+            existing += "\n"
+        content = existing + "\n" + entry
+    else:
+        header = f"# {ticker} — {year}년 {month}월\n\n"
+        content = header + entry
+
     with open(out, "w", encoding="utf-8") as f:
-        f.write(raw if raw.endswith("\n") else raw + "\n")
+        f.write(content)
     return out
 
 
@@ -198,8 +231,9 @@ def main() -> int:
             results.append({"ticker": ticker, "error": str(e)})
             continue
 
-        path = save_daily(ticker, date, raw)
-        saved_paths.append(path)
+        path = append_monthly(ticker, date, raw)
+        if path not in saved_paths:
+            saved_paths.append(path)
 
         parsed = parse_output(raw)
         flag = not is_stable(parsed)
