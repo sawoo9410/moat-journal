@@ -1,0 +1,58 @@
+# AVGO (Broadcom Inc.) — Moat Journal Profile
+ticker: AVGO
+name: Broadcom Inc.
+aliases:
+  - Broadcom
+  - 브로드컴
+  - Avago           # 전신 (Avago Technologies, 2005~2016)
+sector: Semiconductors / Infrastructure Software
+sub_segments:
+  - Networking (스위칭/라우팅 ASIC — Memory Fabric, PCIe)
+  - Custom AI Accelerators (XPU — hyperscaler 전용 ASIC)
+  - Broadband (xPON, 케이블 모뎀)
+  - Wireless (Wi-Fi, Bluetooth, RF 프론트엔드 — Apple 핵심 공급)
+  - Storage (SAS/RAID 컨트롤러, FC HBA)
+  - Infrastructure Software (VMware, Symantec Enterprise, CA Technologies)
+established: 2005           # Avago Technologies 설립 (HP→Agilent→KKR/Silver Lake LBO)
+                             # 2016년 Broadcom Corporation(1991) 인수 후 현재 사명
+tracking_since: 2026-05-09
+tracking_purpose:
+  - moat
+  - dividend
+
+# 배당 정보
+dividend:
+  frequency: quarterly
+  current_quarterly_usd: 0.65       # 2026-Q1 기준 (2025-12 인상, +10.2%)
+  annual_usd: 2.60
+  consecutive_increase_years: 15    # FY2011 배당 개시 이래 연속 증액
+  yield_pct: 0.61                   # [추정] 2026-05-05 주가 ~$425 기준
+
+# 정적 관계
+related:
+  - ticker: MRVL
+    relation: competitor
+    note: 네트워킹 ASIC, 커스텀 AI 가속기 경쟁.
+  - ticker: INTC
+    relation: competitor
+    note: 네트워킹(이더넷), FPGA/ASIC 경쟁.
+  - ticker: NVDA
+    relation: competitor
+    note: AI 가속기 (GPU vs 커스텀 ASIC) 경쟁.
+  - ticker: AAPL
+    relation: customer
+    note: 무선(Wi-Fi/RF) 핵심 고객. 매출 집중 리스크.
+  - ticker: GOOGL
+    relation: customer
+    note: 커스텀 AI ASIC (TPU 관련) hyperscaler 고객.
+
+keywords:
+  - custom ASIC
+  - XPU
+  - AI accelerator
+  - networking switch
+  - VMware
+  - Hock Tan
+  - semiconductor
+  - infrastructure software
+  - dividend growth

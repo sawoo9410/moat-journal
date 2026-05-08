@@ -1,0 +1,55 @@
+# NVDA (NVIDIA Corporation) — Moat Journal Profile
+ticker: NVDA
+name: NVIDIA Corporation
+aliases:
+  - NVIDIA
+  - 엔비디아
+  - Nvidia
+sector: Semiconductor / AI Accelerator
+sub_segments:
+  - Data Center (AI Training & Inference GPU)
+  - Gaming GPU
+  - Professional Visualization
+  - Automotive (DRIVE)
+  - Networking (Mellanox / InfiniBand)
+established: 1993
+tracking_since: 2026-05-09
+tracking_purpose: [moat]
+
+# 배당 — 사실상 무배당
+dividend:
+  status: minimal          # $0.01/quarter (token dividend)
+  note: 자본정책 = 자사주매입 중심. FY2026 $40.6B buyback vs 배당 negligible.
+
+# 정적 관계 — 관련 기업
+related:
+  - ticker: AMD
+    relation: competitor
+    note: AI GPU 직접 경쟁 (MI300X/MI400). CUDA vs ROCm 생태계 싸움.
+  - ticker: INTC
+    relation: competitor
+    note: Gaudi AI 가속기. 데이터센터 시장 재진입 시도.
+  - ticker: AVGO
+    relation: competitor
+    note: Custom ASIC (Google TPU·Meta MTIA 설계 파트너). 추론 시장 위협.
+  - ticker: GOOGL
+    relation: customer
+    note: 대형 GPU 고객이자 TPU 자체 개발로 NVIDIA 대체 추진.
+  - ticker: TSMC
+    relation: supplier
+    note: 파운드리 독점 공급. 3nm/2nm 공정 의존.
+  - ticker: MSFT
+    relation: customer
+    note: Azure AI 인프라 핵심 GPU 고객. Maia 자체 칩 병행.
+
+keywords:
+  - CUDA
+  - GPU
+  - AI accelerator
+  - data center
+  - Jensen Huang
+  - Blackwell
+  - Rubin
+  - H100
+  - B200
+  - NVLink

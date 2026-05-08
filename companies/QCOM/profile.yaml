@@ -1,0 +1,55 @@
+# QCOM (Qualcomm Inc.) — Moat Journal Profile
+ticker: QCOM
+name: Qualcomm Inc.
+aliases:
+  - Qualcomm
+  - 퀄컴
+  - 퀄컴인코포레이티드
+sector: Semiconductors / Wireless Technology
+sub_segments:
+  - QCT (Qualcomm CDMA Technologies) — 칩셋·SoC
+  - QTL (Qualcomm Technology Licensing) — 특허 라이선싱
+  - Automotive (Snapdragon Digital Chassis)
+  - IoT (산업용·XR·네트워킹)
+established: 1985
+tracking_since: 2026-05-09
+tracking_purpose:
+  - moat
+  - dividend
+
+# 정적 관계 — 관련 기업 (교차 참조 옵션 A)
+# relation 값: customer / supplier / competitor / peer / sector-linked
+related:
+  - ticker: GOOGL
+    relation: peer
+    note: Android 생태계 공유(SoC). Snapdragon이 Android 프리미엄 AP 시장 지배.
+  - ticker: NVDA
+    relation: competitor
+    note: AI·자동차 칩 경쟁. Edge AI vs GPU 서버.
+  - ticker: AVGO
+    relation: competitor
+    note: 무선 반도체·네트워킹 칩 경쟁.
+  - ticker: MRVL
+    relation: competitor
+    note: 자동차·5G 인프라 경쟁.
+  - ticker: AAPL
+    relation: customer
+    note: iPhone 모뎀 공급 (2026년까지 계약). Apple 자체 모뎀 전환 리스크.
+
+# 키워드
+keywords:
+  - Snapdragon
+  - 5G
+  - cellular patents
+  - QTL licensing
+  - automotive digital chassis
+  - edge AI
+  - modem
+  - ARM
+
+# 배당 정보
+dividend:
+  status: active
+  consecutive_increase_years: 21   # [추정] 2026-05 기준, 소스별 21~24년 차이
+  frequency: quarterly
+  last_known_quarterly_dividend_usd: 0.92  # 2026-03-26 이후 적용, $0.89 → $0.92 인상

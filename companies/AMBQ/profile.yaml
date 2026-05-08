@@ -1,0 +1,49 @@
+# AMBQ (Ambiq Micro, Inc.) — Moat Journal Profile
+ticker: AMBQ
+name: Ambiq Micro, Inc.
+aliases:
+  - Ambiq
+  - 앰빅
+  - 앰빅 마이크로
+sector: Semiconductors
+sub_segments:
+  - Ultra-low-power MCUs (Apollo SoC)
+  - AI endpoint processors (Atomiq)
+  - IoT / Wearables / Hearables
+established: 2010           # University of Michigan 연구진 설립
+tracking_since: 2026-05-09
+tracking_purpose: [moat]
+
+# 배당
+dividend:
+  status: none              # 2025 IPO 초기. 무배당.
+
+# 정적 관계 — 관련 기업 (교차 참조 옵션 A)
+related:
+  - ticker: STM
+    relation: competitor
+    note: STMicroelectronics. 저전력 MCU 및 IoT SoC 경쟁.
+  - ticker: NRSDY
+    relation: competitor
+    note: Nordic Semiconductor. BLE/IoT 저전력 SoC 경쟁.
+  - ticker: RNECF
+    relation: competitor
+    note: Renesas. 임베디드 MCU 경쟁.
+  - ticker: MCHP
+    relation: competitor
+    note: Microchip Technology. 저전력 MCU 경쟁.
+  - ticker: QUIK
+    relation: competitor
+    note: QuickLogic. 초저전력 SoC/eFPGA 경쟁.
+
+keywords:
+  - SPOT
+  - sub-threshold
+  - ultra-low-power
+  - edge AI
+  - Apollo SoC
+  - Atomiq
+  - wearables
+  - hearables
+  - IoT
+  - MCU

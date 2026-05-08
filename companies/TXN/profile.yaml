@@ -1,0 +1,50 @@
+# TXN (Texas Instruments Incorporated) — Moat Journal Profile
+ticker: TXN
+name: Texas Instruments Incorporated
+aliases:
+  - Texas Instruments
+  - TI
+  - 텍사스 인스트루먼트
+sector: Semiconductors
+sub_segments:
+  - Analog
+  - Embedded Processing
+established: 1951
+tracking_since: 2026-05-09
+tracking_purpose:
+  - moat
+  - dividend
+
+# 배당 정보
+dividend:
+  quarterly: 1.42          # USD per share (2026-Q2 기준)
+  annual: 5.68             # USD per share
+  frequency: quarterly
+  consecutive_increase_years: 22   # 2004년부터 연속 증액
+  ex_div_latest: 2026-05-05
+  pay_date_latest: 2026-05-19
+
+# 정적 관계 — 관련 기업
+related:
+  - ticker: ADI
+    relation: competitor
+    note: Analog Devices. 아날로그 반도체 직접 경쟁.
+  - ticker: MCHP
+    relation: competitor
+    note: Microchip Technology. 임베디드·아날로그 경쟁.
+  - ticker: NXPI
+    relation: competitor
+    note: NXP Semiconductors. 자동차·산업용 반도체 경쟁.
+  - ticker: INTC
+    relation: peer
+    note: Intel. 자체 fab 보유 IDM 동료. 직접 경쟁보다 섹터 연관.
+
+keywords:
+  - analog semiconductor
+  - 300mm wafer fab
+  - industrial semiconductor
+  - automotive semiconductor
+  - dividend aristocrat
+  - free cash flow per share
+  - capital allocation
+  - CHIPS Act

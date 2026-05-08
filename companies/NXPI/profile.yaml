@@ -1,0 +1,57 @@
+# NXPI (NXP Semiconductors N.V.) — Moat Journal Profile
+ticker: NXPI
+name: NXP Semiconductors N.V.
+aliases:
+  - NXP
+  - 엔엑스피
+  - 엔엑스피 세미컨덕터스
+sector: Semiconductors
+sub_segments:
+  - Automotive
+  - Industrial & IoT
+  - Mobile
+  - Communication Infrastructure
+established: 2006             # Philips 반도체 사업부 분사 (역사적 기원: 1953 Philips Nijmegen)
+tracking_since: 2026-05-09
+tracking_purpose:
+  - moat
+  - dividend
+
+# 정적 관계 — 관련 기업 (교차 참조 옵션 A)
+related:
+  - ticker: TXN
+    relation: competitor
+    note: 아날로그/임베디드 반도체 직접 경쟁. 차량용 MCU·센서 겹침.
+  - ticker: INTC
+    relation: competitor
+    note: Mobileye 통한 ADAS 프로세서 경쟁. Altera FPGA 차량용 확장.
+  - ticker: STM
+    relation: competitor
+    note: 유럽 차량용 반도체 직접 경쟁 (MCU·SiC·센서).
+  - ticker: MCHP
+    relation: competitor
+    note: MCU·아날로그 포트폴리오 겹침. 산업/IoT 시장 경쟁.
+  - ticker: IFX.DE
+    relation: competitor
+    note: Infineon — 차량용 반도체 점유율 1위. 파워·센서·MCU 전면 경쟁.
+
+# 배당 정보
+dividend:
+  frequency: quarterly
+  current_quarterly_usd: 1.014        # Q1 2026 기준
+  annual_usd: 4.056                   # [추정] $1.014 × 4
+  consecutive_increase_years: 8       # 2018년 배당 개시 이후 삭감 없음, 최근 1년 동결
+  yield_current_pct: 1.4              # 2026-05-08 기준
+
+# 키워드 (뉴스 필터링용)
+keywords:
+  - NXP
+  - NXPI
+  - automotive semiconductor
+  - ADAS
+  - radar
+  - V2X
+  - in-vehicle networking
+  - Freescale
+  - S32
+  - i.MX
