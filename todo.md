@@ -3,7 +3,10 @@
 > 수정 세션은 이 파일을 읽고 구현한다. 이 파일 수정 금지.
 
 남은 작업: **Phase 4 — 구조 개편 (월간 누적 + 독립 분석)**.
-Phase 1~3(텔레그램 봇, 기본 daily/rollup 인프라, cron 등록)은 완료.
+Phase 1~3(텔레그램 봇, 기본 daily/rollup 인프라, 자동화 등록)은 완료.
+긴급 수정 E.0(cron rc=1 silent fail) / E.1(cron PATH) / E.2(O 종목 추가) 모두 해결됨 — cron→LaunchAgent 전환 + Keychain OAuth 토큰 주입으로 자동화 정상 동작 확인.
+
+---
 
 기존 구조(daily 파일/일 + daily→quarterly→annual 계단식 압축)를 폐기하고:
 - **파일**: 일별 파일 폐지 → **월간 누적 파일** (`companies/{TICKER}/{YYYY}/{YYYY-MM}.md`)
@@ -110,6 +113,7 @@ git add 경로도 변경: `companies/*/{YYYY}/{YYYY-MM}.md`
 ## 4.6 CLAUDE.md 업데이트
 
 CLAUDE.md의 "디렉토리 구조" 섹션과 "자동화 흐름" 섹션을 4.1 / 4.4의 새 구조로 갱신.
+추가로 자동화 흐름 섹션의 "매일 07:00 KST (cron)" 표기를 **LaunchAgent**로 정정 (실제로는 `~/Library/LaunchAgents/com.moat-journal.*.plist` 트리거 + wrapper에서 Keychain OAuth 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`으로 주입). `automation/cron/` 디렉토리 이름은 유지하지만 실체는 launchd임을 명기.
 
 ## 4.7 기존 데이터 처리
 

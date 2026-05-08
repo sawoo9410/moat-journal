@@ -8,7 +8,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -35,20 +35,31 @@ def quarter_of(month: int) -> int:
     return (month - 1) // 3 + 1
 
 
-def quarter_months(quarter: int) -> tuple[int, int]:
+def quarter_months(quarter: int) -> Tuple[int, int]:
     start = (quarter - 1) * 3 + 1
     return start, start + 2
 
 
 def run_claude(prompt: str) -> str:
-    proc = subprocess.run(
-        ["claude", "--print", "-p", prompt],
-        capture_output=True,
-        text=True,
-        cwd=str(ROOT),
-    )
+    try:
+        proc = subprocess.run(
+            ["claude", "--print", "-p", prompt],
+            capture_output=True,
+            text=True,
+            cwd=str(ROOT),
+            env={**os.environ},
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"claude --print 타임아웃 (300s): {e}")
+
     if proc.returncode != 0:
-        raise RuntimeError(f"claude --print 실패 (rc={proc.returncode}): {proc.stderr.strip()}")
+        raise RuntimeError(
+            f"claude --print 실패 (rc={proc.returncode})\n"
+            f"  HOME={os.environ.get('HOME')!r} cwd={ROOT}\n"
+            f"  stderr: {proc.stderr.strip() or '(empty)'}\n"
+            f"  stdout(first 500): {proc.stdout.strip()[:500] or '(empty)'}"
+        )
     return proc.stdout
 
 
@@ -65,7 +76,7 @@ def collect_monthly_for_quarter(ticker: str, year: int, quarter: int) -> str:
     참고용. 없어도 빈 문자열 반환 (분석은 진행).
     """
     m_start, m_end = quarter_months(quarter)
-    parts: list[str] = []
+    parts: List[str] = []
     for m in range(m_start, m_end + 1):
         path = ROOT / "companies" / ticker / str(year) / f"{year}-{m:02d}.md"
         if path.exists():
@@ -75,7 +86,7 @@ def collect_monthly_for_quarter(ticker: str, year: int, quarter: int) -> str:
 
 def collect_quarterly_for_year(ticker: str, year: int) -> str:
     """그 해 4개 분기 분석 파일을 합쳐 컨텍스트 문자열로 반환. 참고용."""
-    parts: list[str] = []
+    parts: List[str] = []
     for q in range(1, 5):
         path = ROOT / "companies" / ticker / str(year) / f"quarterly-Q{q}.md"
         if path.exists():
@@ -164,7 +175,7 @@ def usage() -> None:
     )
 
 
-def main(argv: list[str]) -> int:
+def main(argv: List[str]) -> int:
     if len(argv) < 2 or argv[1] not in ("quarterly", "annual"):
         usage()
         return 2

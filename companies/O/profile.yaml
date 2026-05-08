@@ -1,0 +1,45 @@
+# O (Realty Income Corporation) — Moat Journal Profile
+ticker: O
+name: Realty Income Corporation
+aliases:
+  - Realty Income
+  - 리얼티 인컴
+  - The Monthly Dividend Company
+sector: REIT (Net Lease)
+sub_segments:
+  - Retail (convenience stores, dollar stores, drug stores)
+  - Industrial / logistics
+  - Gaming (Encore Boston Harbor, Bellagio 등)
+  - European portfolio (UK, Spain 등)
+established: 1969
+tracking_since: 2026-05-08
+tracking_purpose:
+  - moat
+  - dividend
+
+related:
+  - ticker: NNN
+    relation: competitor
+    note: National Retail Properties. 유사한 net lease 모델. 규모 차이.
+  - ticker: WPC
+    relation: competitor
+    note: W. P. Carey. net lease + 산업용 비중 높음.
+  - ticker: STOR
+    relation: acquired
+    note: Spirit Realty Capital. 2024년 O에 인수 합병.
+
+keywords:
+  - Realty Income
+  - 리얼티 인컴
+  - "O "
+  - net lease
+  - AFFO
+  - monthly dividend
+  - Sumit Roy            # CEO
+
+dividend:
+  status: aristocrat
+  consecutive_increase_years: 30
+  frequency: monthly
+  last_announced_monthly_usd: 0.264
+  next_review_trigger: 분기 실적 발표 시 확인

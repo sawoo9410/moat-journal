@@ -30,14 +30,25 @@ def render_prompt(template: str, ticker: str, moat_content: str) -> str:
 
 
 def run_claude(prompt: str) -> str:
-    proc = subprocess.run(
-        ["claude", "--print", "-p", prompt],
-        capture_output=True,
-        text=True,
-        cwd=str(ROOT),
-    )
+    try:
+        proc = subprocess.run(
+            ["claude", "--print", "-p", prompt],
+            capture_output=True,
+            text=True,
+            cwd=str(ROOT),
+            env={**os.environ},
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"claude --print 타임아웃 (300s): {e}")
+
     if proc.returncode != 0:
-        raise RuntimeError(f"claude --print 실패 (rc={proc.returncode}): {proc.stderr.strip()}")
+        raise RuntimeError(
+            f"claude --print 실패 (rc={proc.returncode})\n"
+            f"  HOME={os.environ.get('HOME')!r} cwd={ROOT}\n"
+            f"  stderr: {proc.stderr.strip() or '(empty)'}\n"
+            f"  stdout(first 500): {proc.stdout.strip()[:500] or '(empty)'}"
+        )
     return proc.stdout
 
 
