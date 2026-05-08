@@ -1,6 +1,6 @@
 # moat-journal — 운영 규칙
 
-매일 cron으로 종목별 moat(경쟁우위) 분석을 자동 실행하고, 기록을 저장하고, 텔레그램으로 전송하는 시스템.
+매일 LaunchAgent로 종목별 moat(경쟁우위) 분석을 자동 실행하고, 기록을 저장하고, 텔레그램으로 전송하는 시스템.
 
 ## 세션 규칙
 
@@ -30,24 +30,28 @@ automation/
   config.yaml            ← 추적 종목, 텔레그램 설정
   .env.example           ← 환경변수 템플릿
   src/
-    daily_moat.py         ← 매일 cron 실행 오케스트레이터
+    daily_moat.py         ← 매일 LaunchAgent 실행 오케스트레이터
     telegram_bot.py       ← 텔레그램 전송
-    rollup.py             ← 분기/연간 요약 생성
+    rollup.py             ← 분기/연간 독립 분석 생성
   prompts/
-    daily.md              ← claude --print용 분석 프롬프트 템플릿
+    daily.md              ← claude --print용 일일 분석 프롬프트
+    quarterly.md          ← 분기 독립 분석 프롬프트
+    annual.md             ← 연간 독립 회고 프롬프트
   cron/
-    daily_moat.sh         ← cron wrapper
+    daily_moat.sh         ← LaunchAgent wrapper (Keychain OAuth 토큰 주입)
     rollup.sh             ← 분기/연간 rollup wrapper
   logs/                   ← 실행 로그 (gitignore)
 
 companies/{TICKER}/
-  moat.md                ← moat thesis (누적)
-  daily/
-    {YYYY-MM-DD}.md      ← 일일 분석 기록
-  quarterly/
-    {YYYY}-Q{N}.md       ← 분기 요약
-  annual/
-    {YYYY}.md            ← 연간 요약
+  moat.md                ← moat thesis
+  moat-changelog.md      ← thesis 변경 이력
+  dividend.md            ← 배당주 분석 (해당 종목만)
+  profile.yaml           ← 종목 메타 정보
+  pre-2025.md            ← 2025 이전 컨텍스트
+  {YYYY}/
+    {YYYY-MM}.md         ← 월간 누적 (일일 분석 append)
+    quarterly-Q{N}.md    ← 분기 독립 분석
+    annual.md            ← 연간 독립 회고
 ```
 
 ## 텔레그램 메시지 형식
@@ -78,27 +82,30 @@ Moat Daily — {날짜}
 
 - [!] 종목마다 **별도 텔레그램 메시지**로 전송 (하나로 합치지 않음)
 - **텔레그램에 출처/소스/뉴스 상세 일체 포함 금지** — 한줄평이 호악재를 종합
-- 출처·뉴스 bullet 포함한 전체 분석은 `companies/{TICKER}/daily/{날짜}.md`에만 기록
+- 출처·뉴스 bullet 포함한 전체 분석은 `companies/{TICKER}/{YYYY}/{YYYY-MM}.md`에만 기록
 
 ## 자동화 흐름
 
+트리거: `~/Library/LaunchAgents/com.moat-journal.*.plist` (launchd).
+wrapper(`automation/cron/`)에서 Keychain OAuth 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`으로 주입.
+
 ```
-매일 07:00 KST (cron)
+매일 07:00 KST (LaunchAgent)
   → daily_moat.py
   → config.yaml에서 추적 종목 읽기
   → 종목별 claude --print (버핏식 moat 분석 + 웹 검색)
-  → companies/{TICKER}/daily/{날짜}.md에 저장
+  → companies/{TICKER}/{YYYY}/{YYYY-MM}.md에 append
   → 신호 분류 (호재/악재/안정) → 텔레그램 전송
   → git auto-commit
 
-분기 말 (cron, 분기 1회)
+분기 초 (LaunchAgent, 1/1·4/1·7/1·10/1 07:00)
   → rollup.py quarterly
-  → 해당 분기 daily 기록 종합 → quarterly/{YYYY}-Q{N}.md
-  → 텔레그램 분기 요약 전송
+  → WebSearch 기반 독립 분기 분석 → {YYYY}/quarterly-Q{N}.md
+  → 텔레그램 분기 분석 전송
 
-연말 (cron, 연 1회)
+연초 (LaunchAgent, 1/1 07:00)
   → rollup.py annual
-  → 4개 분기 요약 종합 → annual/{YYYY}.md
+  → WebSearch 기반 독립 연간 회고 → {YYYY}/annual.md
 ```
 
 ## commit 정책

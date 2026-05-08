@@ -56,6 +56,9 @@ SECTION_RE = re.compile(r"###\s+(.+?)\n(.*?)(?=\n###\s|\Z)", re.DOTALL)
 
 
 def parse_output(text: str) -> dict:
+    m = re.search(r"\n+(Sources?|References?|출처|참고문헌)\s*:", text, flags=re.IGNORECASE)
+    if m:
+        text = text[: m.start()].rstrip() + "\n"
     sections: dict[str, str] = {}
     for m in SECTION_RE.finditer(text):
         sections[m.group(1).strip()] = m.group(2).strip()
@@ -162,23 +165,10 @@ def build_detail(date: str, ticker: str, parsed: dict) -> str:
         "",
     ]
 
-    bull_items = _normalize_lines(parsed["bullish"])
-    bull_items = [b for b in bull_items if b != "없음"]
-    if bull_items:
-        lines.append("🟢 호재")
-        lines.extend(f"• {b}" for b in bull_items)
-        lines.append("")
-
-    bear_items = _normalize_lines(parsed["bearish"])
-    bear_items = [b for b in bear_items if b != "없음"]
-    if bear_items:
-        lines.append("🔴 악재")
-        lines.extend(f"• {b}" for b in bear_items)
-        lines.append("")
-
     val = parsed["valuation"].strip()
     if val:
-        lines.append(f"💰 {val}")
+        val_one_line = " / ".join(_normalize_lines(val)[:3])
+        lines.append(f"💰 {val_one_line}")
         lines.append("")
 
     comment = parsed["comment"].strip()
