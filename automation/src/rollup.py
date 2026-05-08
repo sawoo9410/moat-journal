@@ -1,3 +1,8 @@
+"""분기/연간 독립 moat 분석.
+
+todo.md 4.4: 이전 daily 누적 방식 폐기. quarterly와 annual은 각자 그 시점에서
+새로 종합 분석한다. 월간/분기 파일은 "관찰 기록"의 참고일 뿐, 재요약 대상 아님.
+"""
 import os
 import subprocess
 import sys
@@ -14,6 +19,7 @@ import telegram_bot
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "automation" / "config.yaml"
+PROMPTS_DIR = ROOT / "automation" / "prompts"
 
 
 def load_yaml_config() -> dict:
@@ -46,138 +52,103 @@ def run_claude(prompt: str) -> str:
     return proc.stdout
 
 
-def collect_daily_files(ticker: str, year: int, quarter: int) -> list[Path]:
-    daily_dir = ROOT / "companies" / ticker / "daily"
-    if not daily_dir.exists():
-        return []
+def read_text(path: Path) -> str:
+    if not path.exists():
+        return ""
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def collect_monthly_for_quarter(ticker: str, year: int, quarter: int) -> str:
+    """분기에 해당하는 월간 누적 파일들을 합쳐 컨텍스트 문자열로 반환.
+
+    참고용. 없어도 빈 문자열 반환 (분석은 진행).
+    """
     m_start, m_end = quarter_months(quarter)
-    files = []
-    for f in sorted(daily_dir.glob("*.md")):
-        try:
-            d = datetime.strptime(f.stem, "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        if d.year == year and m_start <= d.month <= m_end:
-            files.append(f)
-    return files
+    parts: list[str] = []
+    for m in range(m_start, m_end + 1):
+        path = ROOT / "companies" / ticker / str(year) / f"{year}-{m:02d}.md"
+        if path.exists():
+            parts.append(f"--- {year}-{m:02d}.md ---\n{read_text(path)}")
+    return "\n\n".join(parts)
 
 
-def collect_quarterly_files(ticker: str, year: int) -> list[Path]:
-    qdir = ROOT / "companies" / ticker / "quarterly"
-    if not qdir.exists():
-        return []
-    return sorted(qdir.glob(f"{year}-Q*.md"))
+def collect_quarterly_for_year(ticker: str, year: int) -> str:
+    """그 해 4개 분기 분석 파일을 합쳐 컨텍스트 문자열로 반환. 참고용."""
+    parts: list[str] = []
+    for q in range(1, 5):
+        path = ROOT / "companies" / ticker / str(year) / f"quarterly-Q{q}.md"
+        if path.exists():
+            parts.append(f"--- quarterly-Q{q}.md ---\n{read_text(path)}")
+    return "\n\n".join(parts)
 
 
-QUARTERLY_PROMPT = """다음은 {ticker} 종목의 {year}년 Q{quarter} 분기 동안의 일일 moat 분석 기록이다.
-
-================================
-{joined}
-================================
-
-지시사항: 위 일일 기록을 종합하여 분기 요약을 작성하라. 버핏식 4축(pricing power, switching cost, network effect, cost advantage) 관점에서 변화를 평가하라.
-
-출력 형식 (정확히 따를 것):
-
-### 분기 요약
-(이 분기 moat thesis 대비 변화 1~2 문단)
-
-### Moat 변화
-• (4축 중 변동 있는 축과 방향)
-
-### 주요 이벤트
-• (이 분기 가장 중요한 호재/악재 3~5개)
-
-### Valuation 변화
-(분기 초 vs 분기 말, 핵심 지표 추이)
-
-### 다음 분기 관전 포인트
-• (지켜봐야 할 주요 변수 2~3개)
-
-### 한줄 요약
-(분기를 한 문장으로)
-"""
-
-
-ANNUAL_PROMPT = """다음은 {ticker} 종목의 {year}년 4개 분기 요약이다.
-
-================================
-{joined}
-================================
-
-지시사항: 위 4개 분기 요약을 종합하여 연간 moat 회고를 작성하라.
-
-출력 형식 (정확히 따를 것):
-
-### 연간 회고
-(올해 moat thesis가 어떻게 변했는가 2~3 문단)
-
-### Moat 4축 변화
-• Pricing power:
-• Switching cost:
-• Network effect:
-• Cost advantage:
-
-### 올해 핵심 이벤트
-• (Top 5)
-
-### Valuation 추이
-(연초 vs 연말 핵심 지표)
-
-### 내년 관전 포인트
-• (Top 3)
-
-### 한줄 회고
-(한 해를 한 문장으로)
-"""
+def render_prompt(template: str, **kwargs: str) -> str:
+    out = template
+    for key, value in kwargs.items():
+        out = out.replace("{" + key + "}", value)
+    return out
 
 
 def quarterly_rollup(ticker: str, year: int, quarter: int) -> Optional[Path]:
-    files = collect_daily_files(ticker, year, quarter)
-    if not files:
-        print(f"[rollup] {ticker} {year} Q{quarter}: daily 기록 없음", file=sys.stderr)
+    template = read_text(PROMPTS_DIR / "quarterly.md")
+    if not template:
+        print("[rollup] prompts/quarterly.md 없음", file=sys.stderr)
         return None
 
-    joined_parts = []
-    for f in files:
-        with open(f, "r", encoding="utf-8") as fh:
-            joined_parts.append(f"--- {f.stem} ---\n{fh.read()}")
-    joined = "\n\n".join(joined_parts)
+    moat_content = read_text(ROOT / "companies" / ticker / "moat.md")
+    profile_content = read_text(ROOT / "companies" / ticker / "profile.yaml")
+    monthly_context = collect_monthly_for_quarter(ticker, year, quarter)
 
-    prompt = QUARTERLY_PROMPT.format(ticker=ticker, year=year, quarter=quarter, joined=joined)
+    prompt = render_prompt(
+        template,
+        TICKER=ticker,
+        YEAR=str(year),
+        QUARTER=str(quarter),
+        MOAT_CONTENT=moat_content or "(thesis 없음)",
+        PROFILE_CONTENT=profile_content or "(profile 없음)",
+        MONTHLY_CONTEXT=monthly_context or "(월간 누적 없음 — WebSearch + thesis 만으로 분석)",
+    )
+
     raw = run_claude(prompt)
 
-    qdir = ROOT / "companies" / ticker / "quarterly"
-    os.makedirs(qdir, exist_ok=True)
-    out = qdir / f"{year}-Q{quarter}.md"
-    with open(out, "w", encoding="utf-8") as fh:
-        fh.write(raw if raw.endswith("\n") else raw + "\n")
+    out_dir = ROOT / "companies" / ticker / str(year)
+    os.makedirs(out_dir, exist_ok=True)
+    out = out_dir / f"quarterly-Q{quarter}.md"
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(raw if raw.endswith("\n") else raw + "\n")
 
-    msg = f"📊 {ticker} {year} Q{quarter} 분기 요약\n\n{raw.strip()}"
+    msg = f"📊 {ticker} {year} Q{quarter} 분기 분석\n\n{raw.strip()}"
     telegram_bot.send_message(msg)
     return out
 
 
 def annual_rollup(ticker: str, year: int) -> Optional[Path]:
-    files = collect_quarterly_files(ticker, year)
-    if not files:
-        print(f"[rollup] {ticker} {year}: 분기 요약 없음", file=sys.stderr)
+    template = read_text(PROMPTS_DIR / "annual.md")
+    if not template:
+        print("[rollup] prompts/annual.md 없음", file=sys.stderr)
         return None
 
-    joined_parts = []
-    for f in files:
-        with open(f, "r", encoding="utf-8") as fh:
-            joined_parts.append(f"--- {f.stem} ---\n{fh.read()}")
-    joined = "\n\n".join(joined_parts)
+    moat_content = read_text(ROOT / "companies" / ticker / "moat.md")
+    profile_content = read_text(ROOT / "companies" / ticker / "profile.yaml")
+    quarterly_context = collect_quarterly_for_year(ticker, year)
 
-    prompt = ANNUAL_PROMPT.format(ticker=ticker, year=year, joined=joined)
+    prompt = render_prompt(
+        template,
+        TICKER=ticker,
+        YEAR=str(year),
+        MOAT_CONTENT=moat_content or "(thesis 없음)",
+        PROFILE_CONTENT=profile_content or "(profile 없음)",
+        QUARTERLY_CONTEXT=quarterly_context or "(분기 분석 없음 — WebSearch + thesis 만으로 분석)",
+    )
+
     raw = run_claude(prompt)
 
-    adir = ROOT / "companies" / ticker / "annual"
-    os.makedirs(adir, exist_ok=True)
-    out = adir / f"{year}.md"
-    with open(out, "w", encoding="utf-8") as fh:
-        fh.write(raw if raw.endswith("\n") else raw + "\n")
+    out_dir = ROOT / "companies" / ticker / str(year)
+    os.makedirs(out_dir, exist_ok=True)
+    out = out_dir / "annual.md"
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(raw if raw.endswith("\n") else raw + "\n")
 
     msg = f"📅 {ticker} {year} 연간 회고\n\n{raw.strip()}"
     telegram_bot.send_message(msg)
@@ -207,7 +178,7 @@ def main(argv: list[str]) -> int:
     tickers = [target_ticker] if target_ticker else cfg["tickers"]
 
     if mode == "quarterly":
-        # 현재 시점에서 "직전 분기"를 요약 (분기 첫날 cron 실행 가정)
+        # 분기 첫날 cron 실행 가정 → "직전 분기" 분석
         cur_q = quarter_of(now.month)
         if cur_q == 1:
             year, quarter = now.year - 1, 4
