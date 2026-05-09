@@ -1,0 +1,88 @@
+# OXY (Occidental Petroleum Corporation) — Moat Journal Profile
+ticker: OXY
+name: Occidental Petroleum Corporation
+aliases:
+  - Occidental
+  - Occidental Petroleum
+  - 옥시덴탈
+  - 옥시덴탈 페트롤리엄
+  - Oxy
+sector: Energy (Oil & Gas E&P)
+sub_segments:
+  - Permian Basin (Midland + Delaware Basin)
+  - Rockies / DJ Basin
+  - Gulf of Mexico (deepwater)
+  - International (Oman, Algeria 등)
+  - OLCV (Occidental Low Carbon Ventures — Direct Air Capture / CCS)
+  # OxyChem은 2026-01-02 Berkshire에 $9.7B에 매각 완료
+established: 1920            # Los Angeles, CA 설립
+tracking_since: 2026-05-09
+tracking_purpose:
+  - moat
+  - dividend                 # 2020 cut 후 복원, 5년 연속 증액 중
+
+# 정적 관계
+related:
+  - ticker: BRK.B
+    relation: major_shareholder
+    note: 버크셔 ~28.3% 보유 + 8% 우선주 $10B + 워런트 8,000만 주($62.50). 버핏 최대 에너지 포지션.
+  - ticker: CVX
+    relation: peer
+    note: Permian Basin 직접 경쟁. 2019년 Anadarko 인수전에서 OXY에 패배.
+  - ticker: XOM
+    relation: peer
+    note: Permian Basin 대형 경쟁자. Pioneer Natural Resources 인수(2024)로 Permian 확대.
+  - ticker: DVN
+    relation: peer
+    note: Permian Basin 중형 E&P. 유사 breakeven 구간.
+
+# 뉴스 소스
+sources:
+  tier1:
+    - type: web
+      label: Occidental Petroleum Newsroom
+      url: https://www.oxy.com/news/
+    - type: web
+      label: Occidental Investor Relations
+      url: https://www.oxy.com/investors/
+  tier2:
+    - type: web
+      label: Hart Energy
+      url: https://www.hartenergy.com/
+    - type: web
+      label: Rigzone
+      url: https://www.rigzone.com/
+  tier3:
+    - type: edgar
+      label: SEC EDGAR (Occidental Petroleum)
+      cik: "0000797468"
+      forms: [8-K, 10-Q, 10-K, DEF 14A]
+      url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000797468
+
+# 일별 entry 키워드 필터
+keywords:
+  - Occidental Petroleum
+  - 옥시덴탈
+  - "OXY "
+  - Vicki Hollub           # CEO (2016~2026, 퇴임 예정)
+  - Permian Basin
+  - CrownRock
+  - Direct Air Capture
+  - DAC
+  - STRATOS
+  - OxyChem
+  - carbon capture
+  - 1PointFive
+  - Berkshire Hathaway OXY
+
+# Dividend 메타 (§8.7)
+dividend:
+  status: grower                    # 2020 cut 이력 — King/Aristocrat 불가
+  consecutive_increase_years: 5     # 2021년 복원 이후 5년 연속 증액 [추정]
+  frequency: quarterly
+  pay_pattern: Jan 15 / Apr 15 / Jul 15 / Oct 15 (대략)
+  last_announced_qtr_usd: 0.26     # 2026-04-15 지급분 기준
+  annual_usd: 1.04                  # $0.26 x 4
+  yield_approx: 1.9%               # 주가 ~$54 기준 [추정]
+  note: 2020년 $0.79→$0.01 극단적 삭감 이력. 현재 복원 진행 중이나 pre-cut 수준 미회복.
+  next_review_trigger: 차기 분기 배당 발표 시 증액 여부 확인

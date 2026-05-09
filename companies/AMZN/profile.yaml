@@ -1,0 +1,45 @@
+# AMZN (Amazon.com Inc.) — Moat Journal Profile
+ticker: AMZN
+name: Amazon.com Inc.
+aliases:
+  - Amazon
+  - 아마존
+sector: E-commerce + Cloud Computing
+sub_segments:
+  - North America e-commerce
+  - International e-commerce
+  - AWS (Amazon Web Services)
+  - Advertising
+  - Devices / Alexa
+  - Grocery / Whole Foods
+  - Prime Video
+established: 1994
+tracking_since: 2026-05-09
+
+# 배당 상태
+dividend: none                  # 무배당
+
+# 정적 관계 — 관련 기업 (교차 참조)
+related:
+  - ticker: MSFT
+    relation: competitor
+    note: AWS vs Azure 클라우드 직접 경쟁. AI 인프라 투자 경쟁.
+  - ticker: GOOGL
+    relation: competitor
+    note: 클라우드(AWS vs GCP) + 광고(Amazon Ads vs Google Ads).
+  - ticker: WMT
+    relation: competitor
+    note: 미국 리테일 1위. 옴니채널 + Walmart+ 로 Prime 대항.
+  - ticker: SHOP
+    relation: peer
+    note: e-commerce 플랫폼. Amazon 마켓플레이스 대안 생태계.
+
+keywords:
+  - AWS
+  - Prime
+  - fulfillment
+  - e-commerce flywheel
+  - cloud computing
+  - AI infrastructure
+  - advertising
+  - logistics

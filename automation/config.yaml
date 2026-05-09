@@ -3,6 +3,14 @@ tickers:
   - MCD
   - KO
   - O
+  - OXY
+  - QCOM
+  - NVDA
+  - NXPI
+  - TXN
+  - AMZN
+  - AMBQ      # Ambiq Micro
+  - AVGO
 
 paths:
   companies_dir: "companies"
