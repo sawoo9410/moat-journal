@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from typing import Optional
 
 import requests
 
@@ -37,7 +38,7 @@ def _split_message(text: str, limit: int = MAX_LEN) -> list[str]:
     return parts
 
 
-def send_message(text: str) -> bool:
+def send_message(text: str, parse_mode: Optional[str] = None) -> bool:
     try:
         cfg = load_config()
     except RuntimeError as e:
@@ -48,9 +49,12 @@ def send_message(text: str) -> bool:
     ok = True
     for chunk in _split_message(text):
         try:
+            payload = {"chat_id": cfg["chat_id"], "text": chunk, "disable_web_page_preview": True}
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
             resp = requests.post(
                 url,
-                data={"chat_id": cfg["chat_id"], "text": chunk, "disable_web_page_preview": True},
+                data=payload,
                 timeout=15,
             )
             if resp.status_code != 200:

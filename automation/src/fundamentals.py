@@ -68,6 +68,7 @@ def fetch_fundamentals(ticker: str, api_key: str) -> dict:
 
         return {
             "ticker": ticker,
+            "name": data.get("Name", ""),
             "per": round(per, 1) if per else None,
             "roe": round(roe * 100, 1) if roe else None,
             "debt_equity": round(de, 2) if de else None,
@@ -96,24 +97,39 @@ def _fmt(val, suffix: str = "", multiplier: float = 1.0) -> str:
     return f"{val * multiplier}{suffix}"
 
 
+def _signed(val, suffix: str = "%") -> str:
+    """부호 포함 포맷. 양수면 +, 음수면 - 자동."""
+    if val is None:
+        return "N/A"
+    sign = "+" if val >= 0 else ""
+    return f"{sign}{val}{suffix}"
+
+
 def build_fundamentals_table(rows: list) -> str:
-    """monospace 텔레그램 표 메시지 생성."""
-    header = f"{'티커':<6} {'PER':>5} {'ROE':>5} {'D/E':>5} {'Margin':>7} {'52W%':>5} {'Div':>5}"
-    lines = ["```", header, "-" * len(header)]
+    """카드형 텔레그램 메시지 생성 (종목당 블록)."""
+    blocks: list[str] = []
 
     for r in rows:
+        ticker = r["ticker"]
+        name = r.get("name", "")
+
         if r.get("error"):
-            lines.append(f"{r['ticker']:<6} {'-':>5} {'-':>5} {'-':>5} {'-':>7} {'-':>5} {'-':>5}")
+            blocks.append(f"{ticker}  {name}\n  ⚠️ 조회 실패: {r['error']}")
             continue
 
-        per_s = f"{r['per']}×" if r['per'] else "-"
-        roe_s = f"{r['roe']}%" if r['roe'] else "-"
-        de_s = f"{r['debt_equity']}" if r['debt_equity'] is not None else "-"
-        margin_s = f"{r['profit_margin']}%" if r['profit_margin'] else "-"
-        drop_s = f"{r['drop_from_high_pct']}%" if r['drop_from_high_pct'] is not None else "-"
-        div_s = f"{r['dividend_yield']}%" if r['dividend_yield'] else "-"
+        per_s = str(r["per"]) if r["per"] else "N/A"
+        roe_s = _signed(r["roe"])
+        de_s = str(r["debt_equity"]) if r["debt_equity"] is not None else "N/A"
+        margin_s = _signed(r["profit_margin"])
+        drop_s = f"{r['drop_from_high_pct']}%" if r["drop_from_high_pct"] is not None else "N/A"
+        div_s = f"{r['dividend_yield']}%" if r["dividend_yield"] else "N/A"
 
-        lines.append(f"{r['ticker']:<6} {per_s:>5} {roe_s:>5} {de_s:>5} {margin_s:>7} {drop_s:>5} {div_s:>5}")
+        block = (
+            f"{ticker}  {name}\n"
+            f"  PER {per_s:>6}  ROE {roe_s:>8}\n"
+            f"  D/E {de_s:>6}  Margin {margin_s:>8}\n"
+            f"  52주 {drop_s:>6}  배당 {div_s:>6}"
+        )
+        blocks.append(block)
 
-    lines.append("```")
-    return "\n".join(lines)
+    return "\n\n".join(blocks)
