@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fundamentals
 import telegram_bot
 
 
@@ -67,7 +68,7 @@ def parse_output(text: str) -> dict:
         "bullish": sections.get("호재", ""),
         "bearish": sections.get("악재", ""),
         "valuation": sections.get("Valuation", ""),
-        "comment": sections.get("한줄평", ""),
+        "comment": sections.get("종합평가", "") or sections.get("한줄평", ""),
         "raw": text,
     }
 
@@ -79,6 +80,11 @@ def _normalize_lines(block: str) -> list[str]:
         if s:
             out.append(s)
     return out
+
+
+def _top_n(items: list[str], n: int = 3) -> list[str]:
+    """LLM이 n개 이상 출력해도 강제 컷. 첫 n개만 보존(우선순위 순서 가정)."""
+    return items[:n]
 
 
 def is_empty_or_none(block: str) -> bool:
@@ -93,21 +99,7 @@ def is_stable(parsed: dict) -> bool:
 
 
 def append_monthly(ticker: str, date: str, raw: str) -> Path:
-    """일일 분석을 월간 누적 파일(companies/{TICKER}/{YYYY}/{YYYY-MM}.md)에 append.
-
-    포맷 (todo.md 4.2):
-      파일 없으면:
-        # {TICKER} — {YYYY}년 {M}월
-        \n
-        ## {YYYY-MM-DD}
-        \n
-        {분석}
-        \n
-        ---
-      파일 있으면 끝에 동일 entry 패턴(앞에 \n 한 줄 띄움) append.
-
-    같은 날짜 재실행 시: 기존 entry 건드리지 않고 끝에 append (정합성보다 단순함).
-    """
+    """일일 분석을 월간 누적 파일(companies/{TICKER}/{YYYY}/{YYYY-MM}.md)에 append."""
     year_str, month_str, _ = date.split("-")
     year = int(year_str)
     month = int(month_str)
@@ -134,36 +126,94 @@ def append_monthly(ticker: str, date: str, raw: str) -> Path:
     return out
 
 
-def build_summary(date: str, results: list[dict]) -> str:
-    lines = [f"Moat Daily — {date}", ""]
+# ---------------------------------------------------------------------------
+# 메시지 빌더
+# ---------------------------------------------------------------------------
+
+def _build_ticker_block(ticker: str, parsed: dict, max_bullets: int = 3) -> str:
+    """종목 하나의 개조식 블록 생성. build_summary / build_detail 공용."""
+    lines = [f"━ {ticker} ━"]
+
+    bull_items = [b for b in _normalize_lines(parsed["bullish"]) if b != "없음"]
+    bull_items = _top_n(bull_items, max_bullets)
+    if bull_items:
+        lines.append("호재")
+        lines.extend(f"• {b}" for b in bull_items)
+
+    bear_items = [b for b in _normalize_lines(parsed["bearish"]) if b != "없음"]
+    bear_items = _top_n(bear_items, max_bullets)
+    if bear_items:
+        lines.append("악재")
+        lines.extend(f"• {b}" for b in bear_items)
+
+    comment = parsed["comment"].strip()
+    if comment:
+        lines.append(f"종합평가: {comment}")
+
+    return "\n".join(lines)
+
+
+def build_summary_chunks(date: str, results: list[dict], chunk_size: int = 5) -> list[str]:
+    """Moat Daily 요약 메시지. [!] 종목을 chunk_size개씩 묶어 N개 메시지 반환."""
     flagged = [r for r in results if r.get("flag")]
     stable = [r for r in results if not r.get("flag") and not r.get("error")]
     errored = [r for r in results if r.get("error")]
 
-    for r in flagged:
-        comment = r["parsed"]["comment"].strip() or "(한줄평 없음)"
-        lines.append(f"[!] {r['ticker']} — {comment}")
+    # [!] 0개 — 전 종목 안정
+    if not flagged:
+        lines = [f"Moat Daily — {date}", ""]
+        if stable:
+            lines.append(f"안정: {', '.join(r['ticker'] for r in stable)}")
+        if errored:
+            lines.append(f"⚠️ 분석 실패: {', '.join(r['ticker'] for r in errored)}")
+        return ["\n".join(lines).strip() + "\n"]
 
-    if stable:
-        lines.append("")
-        lines.append(f"안정: {', '.join(r['ticker'] for r in stable)}")
+    # 청크 분할
+    chunks: list[list[dict]] = []
+    for i in range(0, len(flagged), chunk_size):
+        chunks.append(flagged[i : i + chunk_size])
 
-    if errored:
-        lines.append("")
-        lines.append(f"⚠️ 분석 실패: {', '.join(r['ticker'] for r in errored)}")
+    messages = []
+    total = len(chunks)
+    for idx, chunk in enumerate(chunks, 1):
+        lines = [f"Moat Daily — {date} ({idx}/{total})", ""]
+        for r in chunk:
+            lines.append(_build_ticker_block(r["ticker"], r["parsed"], max_bullets=3))
+            lines.append("")
 
-    return "\n".join(lines).strip() + "\n"
+        # 마지막 청크에만 안정/에러 라인
+        if idx == total:
+            if stable:
+                lines.append(f"안정: {', '.join(r['ticker'] for r in stable)}")
+            if errored:
+                lines.append(f"⚠️ 분석 실패: {', '.join(r['ticker'] for r in errored)}")
+
+        messages.append("\n".join(lines).strip() + "\n")
+
+    return messages
 
 
 def build_detail(date: str, ticker: str, parsed: dict) -> str:
-    bar = "━" * 16
+    """주간 detail 메시지 (일요일). 종목당 1메시지."""
     lines = [
-        bar,
-        f"  {ticker} — {date}",
-        f"  Moat: {parsed['moat_status'] or '(미상)'}",
-        bar,
+        f"━━ {ticker} — {date} ━━",
+        f"Moat: {parsed['moat_status'] or '(미상)'}",
         "",
     ]
+
+    bull_items = [b for b in _normalize_lines(parsed["bullish"]) if b != "없음"]
+    bull_items = _top_n(bull_items, 5)
+    if bull_items:
+        lines.append("호재")
+        lines.extend(f"• {b}" for b in bull_items)
+        lines.append("")
+
+    bear_items = [b for b in _normalize_lines(parsed["bearish"]) if b != "없음"]
+    bear_items = _top_n(bear_items, 5)
+    if bear_items:
+        lines.append("악재")
+        lines.extend(f"• {b}" for b in bear_items)
+        lines.append("")
 
     val = parsed["valuation"].strip()
     if val:
@@ -173,10 +223,14 @@ def build_detail(date: str, ticker: str, parsed: dict) -> str:
 
     comment = parsed["comment"].strip()
     if comment:
-        lines.append(f"💬 {comment}")
+        lines.append(f"종합평가: {comment}")
 
     return "\n".join(lines).strip() + "\n"
 
+
+# ---------------------------------------------------------------------------
+# git
+# ---------------------------------------------------------------------------
 
 def git_commit(date: str, paths: list[Path]) -> None:
     if not paths:
@@ -200,12 +254,35 @@ def git_commit(date: str, paths: list[Path]) -> None:
         print(f"[daily_moat] git commit 실패: {e}", file=sys.stderr)
 
 
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
 def main() -> int:
     cfg = load_yaml_config()
     tickers: list[str] = cfg["tickers"]
     tz = cfg.get("schedule", {}).get("timezone", "Asia/Seoul")
+    detail_weekday = cfg.get("schedule", {}).get("detail_weekday", 6)  # 6=일요일
+    chunk_size = cfg.get("schedule", {}).get("summary_chunk_size", 5)
     date = today_str(tz)
 
+    now = datetime.now(ZoneInfo(tz))
+    is_weekly_detail_day = now.weekday() == detail_weekday
+
+    # ── 1단계: 펀더멘탈 표 (daily 분석보다 먼저 도착) ──
+    av_key = os.environ.get("ALPHAVANTAGE_API_KEY", "")
+    if av_key:
+        try:
+            fund_rows = fundamentals.fetch_all(tickers, av_key)
+            fund_table = fundamentals.build_fundamentals_table(fund_rows)
+            telegram_bot.send_message(fund_table)
+        except Exception as e:
+            telegram_bot.send_message(f"⚠️ 펀더멘탈 조회 실패 ({e})")
+            print(f"[daily_moat] fundamentals 실패: {e}", file=sys.stderr)
+    else:
+        print("[daily_moat] ALPHAVANTAGE_API_KEY 미설정, 펀더멘탈 스킵", file=sys.stderr)
+
+    # ── 2단계: 종목별 claude --print 분석 ──
     prompt_path = ROOT / cfg["paths"]["prompts_dir"] / "daily.md"
     with open(prompt_path, "r", encoding="utf-8") as f:
         template = f.read()
@@ -240,12 +317,15 @@ def main() -> int:
         flag = not is_stable(parsed)
         results.append({"ticker": ticker, "parsed": parsed, "flag": flag})
 
-    summary = build_summary(date, results)
-    telegram_bot.send_message(summary)
+    # 매일: Moat Daily 청크 메시지
+    for msg in build_summary_chunks(date, results, chunk_size):
+        telegram_bot.send_message(msg)
 
-    for r in results:
-        if r.get("flag"):
-            telegram_bot.send_message(build_detail(date, r["ticker"], r["parsed"]))
+    # 일요일만: 전 종목 detail
+    if is_weekly_detail_day:
+        for r in results:
+            if r.get("parsed"):
+                telegram_bot.send_message(build_detail(date, r["ticker"], r["parsed"]))
 
     git_commit(date, saved_paths)
     return 0

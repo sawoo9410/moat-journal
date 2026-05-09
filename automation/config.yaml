@@ -18,3 +18,5 @@ paths:
 
 schedule:
   timezone: "Asia/Seoul"
+  detail_weekday: 6           # 일요일 (Python weekday: 0=월 ... 6=일)
+  summary_chunk_size: 5       # Moat Daily [!] 종목 청크 크기
