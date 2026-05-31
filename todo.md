@@ -3,9 +3,61 @@
 > 수정 세션은 이 파일을 읽고 구현한다. 이 파일 수정 금지.
 
 남은 작업:
+- **J. 펀더멘털 시계열 적재** — 종목별 CSV 하루 1행 (작업 I의 전제)
 - **I. 매수 매력도 등급** — 포지션 무관 4단계 · 하이브리드 판단 · 레인별 기준
 
 > E·F·G·H는 정합 완료(커밋 4cae983까지)되어 제거됨.
+> 구현 순서: **J → I** (I의 밸류 판단이 J의 과거 데이터를 소비).
+
+---
+
+## J. 펀더멘털 시계열 적재
+
+### 목표
+
+현재 펀더멘털은 매일 조회 → 텔레그램 카드 전송 → **버려짐**(어디에도 저장 안 됨). 종목별 시계열로 적재해 과거평균·밴드 계산을 가능케 함. **작업 I의 밸류 판단(배당 yield vs 과거평균, PER vs 자기 밴드)의 전제.**
+
+### J.1 저장 형식 — 종목별 CSV
+
+```
+companies/{TICKER}/fundamentals.csv
+date,per,roe,debt_equity,profit_margin,drop_from_high_pct,dividend_yield,source
+2026-06-01,23.0,35.8,1.25,31.6,-18.3,2.66,yfinance
+```
+
+- 하루 1행 append (1년 ≈ 365행, 가벼움). 컬럼 = F.2 정규화 단위 그대로(ROE/Margin/배당=%, D/E=비율).
+- None 필드는 빈 칸. `source` = 그 행을 채운 소스(F.6 폴백에 따라 `yfinance` 또는 `yfinance+stooq` 등).
+- **git 커밋 대상** — `companies/` 는 gitignore 아님. 버전관리할 데이터.
+
+### J.2 코드 변경 — `automation/src/daily_moat.py` step 1
+
+`fetch_all` 직후, 텔레그램 전송과 **독립적으로** CSV append (append 실패가 카드 전송을 막지 않도록 try/except 분리):
+
+```python
+fund_rows = fundamentals.fetch_all(tickers)
+for row in fund_rows:
+    try:
+        append_fundamentals_csv(row["ticker"], date, row)  # error 행은 skip
+    except Exception as e:
+        print(f"[daily_moat] fundamentals csv append 실패 {row['ticker']}: {e}", file=sys.stderr)
+fund_table = fundamentals.build_fundamentals_table(fund_rows)
+telegram_bot.send_message(fund_table)
+```
+
+신규 함수 `append_fundamentals_csv(ticker, date, row)`:
+- 파일 없으면 헤더 먼저 기록.
+- **멱등성**: 같은 `date` 행이 이미 있으면 중복 append 금지 — 그 날짜 행을 덮어쓰거나 skip(수동 재실행 대비).
+- `row.get("error")` 있으면 **skip**(빈 행으로 오염시키지 않음).
+- 저장한 CSV 경로를 `git_commit` 대상(`saved_paths`)에 포함.
+
+### J.3 검증 (수정 세션 후)
+
+1. 수동 1회 실행 → `companies/GOOGL/fundamentals.csv` 생성, 헤더 + 당일 1행.
+2. 같은 날 재실행 → 행 중복 안 됨(멱등).
+3. error 종목은 행 미기록.
+4. `git status`에 `companies/*/fundamentals.csv` 추적됨(커밋 포함).
+
+J 검증 완료되면 I 착수.
 
 ---
 
@@ -61,6 +113,8 @@
 | Moat질 | 재투자 해자 폭(ROIC·재투자 활주로) | 현금흐름 안정 해자 |
 | 밸류(저평가 판단) | 성장 대비 PER + 52주 위치 | 배당수익률 vs 과거평균/국채 + payout 안전성(FCF 커버) |
 | 회피 트리거 | moat 약화/훼손 · 성장정체+고PER | 배당컷 리스크 · payout 위험 · moat 훼손 |
+
+"과거평균/밴드"(yield 과거평균, PER 자기 밴드)는 **J의 `fundamentals.csv`에서 계산**해 프롬프트에 함께 주입. 데이터가 부족한 초기엔 LLM 웹검색/현재값으로 graceful fallback.
 
 ### I.5 코드/프롬프트 변경 범위
 
