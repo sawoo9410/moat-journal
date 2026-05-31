@@ -3,60 +3,103 @@
 > 수정 세션은 이 파일을 읽고 구현한다. 이 파일 수정 금지.
 
 남은 작업:
-- **G. 로그 월별 분리** — `daily-2026-05.log` 식으로 누적 (3개 wrapper 미구현)
-- **H. dead code 정리** — `_build_ticker_block` 미사용 제거
+- **I. 매수 매력도 등급** — 포지션 무관 4단계 · 하이브리드 판단 · 레인별 기준
 
-> E(Moat Daily 단축)·F(펀더멘털 yfinance 교체 + 폴백)는 평가에서 정합 완료 확인되어 제거됨.
-
----
-
-## G. 로그 월별 분리
-
-### 배경
-
-현재 wrapper들이 단일 파일에 무한 append (`daily.log`, `daily-launchd.log`, `rollup.log`, `token-refresh.log`). 회전 없음. 월 경계로 파일을 갈라 누적하고 싶음: `daily-2026-05.log`, `daily-2026-06.log` …
-
-### G.1 방식 — plist 수정 없이 wrapper에서 처리
-
-각 wrapper 상단(`cd` 직후, 토큰 주입/echo 이전)에 월별 파일로 **전체 출력 리다이렉트**:
-
-```bash
-mkdir -p automation/logs
-MONTH="$(date +%Y-%m)"
-exec >> "automation/logs/daily-$MONTH.log" 2>&1
-```
-
-- `exec >> ... 2>&1` 이후 모든 wrapper echo + python 출력이 월별 파일 하나로 감 → 기존 `daily.log` + `daily-launchd.log` 이원화가 **단일 월별 파일로 통합**.
-- 따라서 `daily_moat.sh` 끝의 `... | tee -a automation/logs/daily.log` 파이프 **제거**, `"$PYTHON" automation/src/daily_moat.py` 만 실행 (pipefail 우려도 사라짐).
-- plist `StandardOutPath`/`StandardErrorPath`는 그대로 둠 — `exec` 이후엔 거의 빈 채로 남고, exec 이전 치명적 실패(bash 기동 실패 등)만 잡는 안전망. plist 편집 불필요.
-
-### G.2 적용 대상 wrapper
-
-| wrapper | 월별 파일명 |
-|---------|-------------|
-| `automation/cron/daily_moat.sh` | `daily-$MONTH.log` |
-| `automation/cron/rollup.sh` | `rollup-$MONTH.log` (기존 `tee -a rollup.log` 제거) |
-| `automation/cron/refresh_token.sh` | `token-refresh-$MONTH.log` (기존 `LOG=` 고정경로를 월별로) |
-
-각 wrapper 동일 패턴 적용. `refresh_token.sh`는 `LOG` 변수를 `automation/logs/token-refresh-$(date +%Y-%m).log`로 바꾸거나 동일 `exec` 패턴으로 통일.
-
-### G.3 기존 로그 / gitignore
-
-- 기존 `daily.log`/`daily-launchd.log`/`rollup.log`/`token-refresh.log`는 그대로 둠(건드리지 않음). 새 쓰기만 월별로.
-- `.gitignore`의 `automation/logs/`가 `*-YYYY-MM.log` 전부 커버 → 추가 설정 불필요.
-
-### G.4 검증 (수정 세션 후)
-
-1. `bash automation/cron/daily_moat.sh` 수동 1회 → `automation/logs/daily-2026-05.log` 생성·기록 확인(wrapper 헤더 + python 출력 한 파일에).
-2. plist 발사(`launchctl start com.moat-journal.daily`) 후에도 월별 파일에 정상 적재 확인.
-3. 월 경계 자동 분리는 `date +%Y-%m`이 보장(다음 달 첫 실행 시 새 파일).
+> E·F·G·H는 정합 완료(커밋 4cae983까지)되어 제거됨.
 
 ---
 
-## H. dead code 정리
+## I. 매수 매력도 등급
 
-평가에서 발견: `automation/src/daily_moat.py`의 `_build_ticker_block`(현 :133 부근)이 E 단축 이후 어디서도 호출되지 않음 (`build_summary_chunks`·`build_detail` 모두 자체 라인 빌드). 미사용 함수 제거.
+### 목표
 
-- `_build_ticker_block` 삭제. 이 함수에서만 쓰이고 다른 데서 안 쓰이는 헬퍼가 있으면 같이 정리 (단 `_normalize_lines`·`_top_n`은 `build_detail`에서 사용 중 → 유지).
+매일 종목별로 "**지금 이 가격에 신규 진입할 만한가**"를 4단계로 판정해 텔레그램 + 월간 .md에 표시. 보유 현황은 추적하지 않음(포지션 무관 매력도, 길 A). moat-journal의 역할은 장기보유 관점의 매력 평가 — 타이밍 트레이딩은 별도 프로젝트 담당.
 
-G·H 모두 처리되면 종결, todo 비우기.
+### I.1 등급 체계 (포지션 무관 4단계)
+
+| 등급 | 의미 |
+|------|------|
+| **신규매수 적기** | 지금 들어갈 만함 |
+| **매수 고려** | 들어가도 되나 서두를 것 없음 |
+| **관망** | 진입 근거 부족, 대기 |
+| **회피** | 신규 진입 부적절 (보유 중이면 비중축소로 읽음) |
+
+"분할매수/보유" 같은 포지션 전제 단어 금지(현재 0포지션).
+
+### I.2 판단 = 2축 + 하이브리드 결합
+
+**축 1 — Moat질 (LLM 정성)**: 견고 / 좁음 / 약화 / 훼손 (기존 `Moat 상태`와 연동)
+**축 2 — 밸류 (LLM이 주입된 실값에 ground)**: 저평가 / 적정 / 고평가
+
+- **절대 PER로 자르지 않음** — 종목 자신/섹터 기준 상대평가. 룰은 실값(52주 고점대비·PER·배당)을 LLM에 주입해 ground시키고, 극단값만 가드.
+- **하이브리드 분담**:
+  - LLM: 두 축(Moat질 + 밸류) 판정 + 1줄 근거. 주입된 펀더멘털 실값 + 웹검색으로 맥락 부여.
+  - Python: 아래 **매트릭스로 최종 등급을 결정론적으로 산정**(LLM이 제안한 등급이 아니라 매트릭스가 authoritative) + 자본보존 가드 적용.
+
+### I.3 결합 매트릭스 (Python, authoritative)
+
+| Moat질 ＼ 밸류 | 저평가 | 적정 | 고평가 |
+|---|---|---|---|
+| **견고** | 신규매수 적기 | 매수 고려 | 관망 |
+| **좁음** | 매수 고려 | 관망 | 관망 |
+| **약화** | 관망 | 회피 | 회피 |
+| **훼손** | 회피 | 회피 | 회피 |
+
+**자본보존 가드 (결정론적)**: Moat질이 `약화`/`훼손`이면 어떤 밸류에서도 `신규매수 적기`·`매수 고려`가 나오지 않도록 clamp(매트릭스가 이미 보장하나, LLM이 다른 등급을 우겨도 Python이 재강제). 싼 게 함정일 수 있음.
+
+### I.4 레인별 기준 (compounder vs dividend)
+
+레인은 `profile.yaml`에서 결정:
+- 명시적 `lane: compounder|dividend` 있으면 그대로.
+- 없으면: `tracking_purpose`에 `dividend` 포함 또는 `dividend:` 블록 존재 → dividend, 아니면 compounder.
+- 수정 세션은 `profile.yaml`에 `lane` 필드 추가 권장(예: O=dividend, GOOGL=compounder). `dividend.md`는 대부분 종목에 스캐폴드돼 있어 레인 판별 근거로 쓰지 말 것.
+
+레인별로 두 축의 잣대가 다름(프롬프트에서 분기):
+
+| | compounder | dividend |
+|---|---|---|
+| Moat질 | 재투자 해자 폭(ROIC·재투자 활주로) | 현금흐름 안정 해자 |
+| 밸류(저평가 판단) | 성장 대비 PER + 52주 위치 | 배당수익률 vs 과거평균/국채 + payout 안전성(FCF 커버) |
+| 회피 트리거 | moat 약화/훼손 · 성장정체+고PER | 배당컷 리스크 · payout 위험 · moat 훼손 |
+
+### I.5 코드/프롬프트 변경 범위
+
+**`automation/prompts/daily.md`**
+- `{FUNDAMENTALS}`, `{LANE}` placeholder 추가.
+- 새 섹션 `### 매수 매력도` 출력 지시 — 형식:
+  ```
+  - Moat질: 견고|좁음|약화|훼손
+  - 밸류: 저평가|적정|고평가
+  - 레인: compounder|dividend
+  - 근거: {한 줄, 레인 기준 반영}
+  ```
+- 기존 섹션(Moat 상태/호재/악재/Valuation/종합평가)은 유지. 레인별 잣대 설명을 프롬프트에 명시.
+
+**`automation/src/daily_moat.py`**
+- `render_prompt(template, ticker, moat_content, fundamentals_str, lane)`로 확장 — 시그니처에 펀더멘털 실값 문자열 + 레인 주입.
+  - 펀더멘털 문자열: step 1에서 받은 `fund_rows`를 `{ticker: row}` dict로 만들어 조회. 포맷 예 `PER 23 / ROE 35.8% / D/E 1.25 / Margin 31.6% / 52주 고점대비 -18.3% / 배당 2.66%`. error 행이면 `펀더멘털 N/A`.
+  - 레인: `profile.yaml` 읽어 I.4 규칙으로 결정. 헬퍼 `load_lane(ticker) -> "compounder"|"dividend"`.
+- `parse_output`: `### 매수 매력도`에서 `moat_q`(Moat질), `valuation_bucket`(밸류), `rec_lane`, `rec_rationale` 추출.
+- 신규 `compute_grade(moat_q: str, valuation_bucket: str) -> str` — I.3 매트릭스 + 가드. 알 수 없는 값이면 안전하게 `관망`.
+- `results[i]`에 `grade`, `rec_rationale` 추가.
+
+**`companies/{T}/profile.yaml`**: `lane` 필드 추가(선택, 추론 폴백 있음).
+
+### I.6 표시 위치
+
+**텔레그램 — Moat Daily 요약** (build_summary_chunks):
+- [!] 종목 헤더에 등급 인라인: `━ GOOGL · 매수 고려 ━` 후 종합평가.
+- 안정 종목 라인에도 등급: `안정: KO·관망, QCOM·매수 고려` (전 종목 등급 가시화).
+
+**월간 .md**: claude raw 출력에 `### 매수 매력도` 섹션이 포함되므로 `append_monthly`가 자동 보존(추가 작업 없음). Python이 매트릭스로 보정한 최종 등급과 LLM 섹션이 다를 수 있으니, 월간 .md에는 **보정 후 최종 등급 한 줄을 헤더에 덧붙임**(예: `## 2026-06-01 · 매수 고려`)— append 시 date 헤더에 등급 부가.
+
+**펀더멘털 카드(step 1)**: 등급은 분석(step 2) 이후 산정되므로 카드에는 넣지 않음(카드는 실값 먼저 도착 유지).
+
+### I.7 검증 (수정 세션 후)
+
+1. 4종목 수동 실행 → 각 출력에 `### 매수 매력도`(Moat질/밸류/레인/근거) 존재, 최종 등급이 4단계 중 하나.
+2. **가드 검증**: Moat질이 약화/훼손인 종목은 신규매수 적기·매수 고려가 절대 안 나옴.
+3. **레인 검증**: O는 dividend 잣대(배당 안전성·payout 언급), GOOGL은 compounder 잣대(재투자/성장 대비 PER).
+4. 텔레그램 요약에 `━ TICKER · 등급 ━` + 안정 라인 등급 표시. 월간 .md date 헤더에 최종 등급 부가.
+
+I 검증 완료되면 종결, todo 비우기.
