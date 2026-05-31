@@ -1,5 +1,6 @@
 # NXPI (NXP Semiconductors N.V.) — Moat Journal Profile
 ticker: NXPI
+lane: compounder              # 매수 매력도 등급 레인(작업 I)
 name: NXP Semiconductors N.V.
 aliases:
   - NXP

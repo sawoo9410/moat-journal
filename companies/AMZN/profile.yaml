@@ -1,5 +1,6 @@
 # AMZN (Amazon.com Inc.) — Moat Journal Profile
 ticker: AMZN
+lane: compounder              # 매수 매력도 등급 레인(작업 I)
 name: Amazon.com Inc.
 aliases:
   - Amazon

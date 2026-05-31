@@ -1,5 +1,6 @@
 # NVDA (NVIDIA Corporation) — Moat Journal Profile
 ticker: NVDA
+lane: compounder              # 매수 매력도 등급 레인(작업 I)
 name: NVIDIA Corporation
 aliases:
   - NVIDIA

@@ -1,5 +1,6 @@
 # KO (The Coca-Cola Company) — Moat Journal Profile
 ticker: KO
+lane: dividend              # 매수 매력도 등급 레인(작업 I)
 name: The Coca-Cola Company
 aliases:
   - Coca-Cola

@@ -1,5 +1,6 @@
 # O (Realty Income Corporation) — Moat Journal Profile
 ticker: O
+lane: dividend              # 매수 매력도 등급 레인(작업 I)
 name: Realty Income Corporation
 aliases:
   - Realty Income

@@ -1,5 +1,6 @@
 # MCD (McDonald's Corporation) — Moat Journal Profile
 ticker: MCD
+lane: dividend              # 매수 매력도 등급 레인(작업 I)
 name: McDonald's Corporation
 aliases:
   - McDonald's

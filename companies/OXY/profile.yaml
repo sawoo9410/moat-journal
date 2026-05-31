@@ -1,5 +1,6 @@
 # OXY (Occidental Petroleum Corporation) — Moat Journal Profile
 ticker: OXY
+lane: compounder              # 매수 매력도 등급 레인(작업 I)
 name: Occidental Petroleum Corporation
 aliases:
   - Occidental

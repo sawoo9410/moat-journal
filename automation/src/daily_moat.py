@@ -27,8 +27,59 @@ def today_str(tz_name: str) -> str:
     return datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
 
 
-def render_prompt(template: str, ticker: str, moat_content: str) -> str:
-    return template.replace("{TICKER}", ticker).replace("{MOAT_CONTENT}", moat_content)
+def render_prompt(
+    template: str,
+    ticker: str,
+    moat_content: str,
+    fundamentals_str: str = "펀더멘털 N/A",
+    lane: str = "compounder",
+) -> str:
+    return (
+        template
+        .replace("{TICKER}", ticker)
+        .replace("{MOAT_CONTENT}", moat_content)
+        .replace("{FUNDAMENTALS}", fundamentals_str)
+        .replace("{LANE}", lane)
+    )
+
+
+def load_lane(ticker: str) -> str:
+    """profile.yaml에서 레인 결정(작업 I.4).
+
+    우선순위: 명시적 `lane` 필드 > tracking_purpose에 dividend 포함 > dividend 블록 존재
+    → dividend, 그 외 compounder.
+    """
+    prof_path = ROOT / "companies" / ticker / "profile.yaml"
+    if not prof_path.exists():
+        return "compounder"
+    try:
+        prof = yaml.safe_load(prof_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return "compounder"
+    lane = prof.get("lane")
+    if lane in ("compounder", "dividend"):
+        return lane
+    tp = prof.get("tracking_purpose") or []
+    if isinstance(tp, list) and any("dividend" in str(x) for x in tp):
+        return "dividend"
+    if prof.get("dividend"):
+        return "dividend"
+    return "compounder"
+
+
+def format_fundamentals_line(row) -> str:
+    """프롬프트 주입용 1줄 펀더멘털 실값. None/error면 'N/A' 처리."""
+    if not row or row.get("error"):
+        return "펀더멘털 N/A"
+
+    def fmt(v, suffix=""):
+        return f"{v}{suffix}" if v is not None else "N/A"
+
+    return (
+        f"PER {fmt(row.get('per'))} / ROE {fmt(row.get('roe'), '%')} / "
+        f"D/E {fmt(row.get('debt_equity'))} / Margin {fmt(row.get('profit_margin'), '%')} / "
+        f"52주 고점대비 {fmt(row.get('drop_from_high_pct'), '%')} / 배당 {fmt(row.get('dividend_yield'), '%')}"
+    )
 
 
 def run_claude(prompt: str) -> str:
@@ -57,6 +108,15 @@ def run_claude(prompt: str) -> str:
 SECTION_RE = re.compile(r"###\s+(.+?)\n(.*?)(?=\n###\s|\Z)", re.DOTALL)
 
 
+def _extract_field(block: str, key: str) -> str:
+    """`- key: value` 또는 `key value` 형태에서 value 추출."""
+    for line in block.splitlines():
+        s = line.strip().lstrip("•-*").strip()
+        if s.startswith(key):
+            return s[len(key):].lstrip(":： ").strip()
+    return ""
+
+
 def parse_output(text: str) -> dict:
     m = re.search(r"\n+(Sources?|References?|출처|참고문헌)\s*:", text, flags=re.IGNORECASE)
     if m:
@@ -64,14 +124,71 @@ def parse_output(text: str) -> dict:
     sections: dict[str, str] = {}
     for m in SECTION_RE.finditer(text):
         sections[m.group(1).strip()] = m.group(2).strip()
+    attract = sections.get("매수 매력도", "")
     return {
         "moat_status": sections.get("Moat 상태", ""),
         "bullish": sections.get("호재", ""),
         "bearish": sections.get("악재", ""),
         "valuation": sections.get("Valuation", ""),
         "comment": sections.get("종합평가", "") or sections.get("한줄평", ""),
+        # 매수 매력도(작업 I) — LLM 정성 판정 2축 + 레인 + 근거
+        "moat_q": _extract_field(attract, "Moat질"),
+        "valuation_bucket": _extract_field(attract, "밸류"),
+        "rec_lane": _extract_field(attract, "레인"),
+        "rec_rationale": _extract_field(attract, "근거"),
         "raw": text,
     }
+
+
+# ---------------------------------------------------------------------------
+# 매수 매력도 등급 (작업 I) — Python authoritative 매트릭스 + 자본보존 가드
+# ---------------------------------------------------------------------------
+
+GRADE_MATRIX = {
+    ("견고", "저평가"): "신규매수 적기",
+    ("견고", "적정"): "매수 고려",
+    ("견고", "고평가"): "관망",
+    ("좁음", "저평가"): "매수 고려",
+    ("좁음", "적정"): "관망",
+    ("좁음", "고평가"): "관망",
+    ("약화", "저평가"): "관망",
+    ("약화", "적정"): "회피",
+    ("약화", "고평가"): "회피",
+    ("훼손", "저평가"): "회피",
+    ("훼손", "적정"): "회피",
+    ("훼손", "고평가"): "회피",
+}
+
+
+def _norm_moat_q(s: str):
+    s = s or ""
+    for k in ("견고", "좁음", "약화", "훼손"):
+        if k in s:
+            return k
+    return None
+
+
+def _norm_valuation(s: str):
+    s = s or ""
+    for k in ("저평가", "적정", "고평가"):
+        if k in s:
+            return k
+    return None
+
+
+def compute_grade(moat_q: str, valuation_bucket: str) -> str:
+    """I.3 매트릭스로 최종 등급을 결정론적으로 산정. 알 수 없으면 안전하게 '관망'.
+
+    자본보존 가드: Moat질이 약화/훼손이면 신규매수 적기·매수 고려가 절대 안 나오도록 재강제.
+    """
+    mq = _norm_moat_q(moat_q)
+    vb = _norm_valuation(valuation_bucket)
+    if mq is None or vb is None:
+        return "관망"
+    grade = GRADE_MATRIX.get((mq, vb), "관망")
+    if mq in ("약화", "훼손") and grade in ("신규매수 적기", "매수 고려"):
+        grade = "회피" if mq == "훼손" else "관망"
+    return grade
 
 
 def _normalize_lines(block: str) -> list[str]:
@@ -99,8 +216,11 @@ def is_stable(parsed: dict) -> bool:
     return is_empty_or_none(parsed["bullish"]) and is_empty_or_none(parsed["bearish"])
 
 
-def append_monthly(ticker: str, date: str, raw: str) -> Path:
-    """일일 분석을 월간 누적 파일(companies/{TICKER}/{YYYY}/{YYYY-MM}.md)에 append."""
+def append_monthly(ticker: str, date: str, raw: str, grade: str = None) -> Path:
+    """일일 분석을 월간 누적 파일(companies/{TICKER}/{YYYY}/{YYYY-MM}.md)에 append.
+
+    grade(작업 I 최종 등급)가 있으면 date 헤더에 부가: `## 2026-06-01 · 매수 고려`.
+    """
     year_str, month_str, _ = date.split("-")
     year = int(year_str)
     month = int(month_str)
@@ -110,7 +230,8 @@ def append_monthly(ticker: str, date: str, raw: str) -> Path:
     out = monthly_dir / f"{year_str}-{month_str}.md"
 
     body = raw.rstrip("\n")
-    entry = f"## {date}\n\n{body}\n\n---\n"
+    date_header = f"## {date}" + (f" · {grade}" if grade else "")
+    entry = f"{date_header}\n\n{body}\n\n---\n"
 
     if out.exists():
         with open(out, "r", encoding="utf-8") as f:
@@ -196,17 +317,26 @@ def append_fundamentals_csv(ticker: str, date: str, row: dict):
 # 메시지 빌더
 # ---------------------------------------------------------------------------
 
+def _stable_label(r: dict) -> str:
+    """안정 종목 라벨에 등급 부가: 'KO·관망'."""
+    g = r.get("grade")
+    return f"{r['ticker']}·{g}" if g else r["ticker"]
+
+
 def build_summary_chunks(date: str, results: list[dict], chunk_size: int = 5) -> list[str]:
-    """Moat Daily 요약 메시지. 종합평가만 송출, 호재/악재/Valuation은 월간 .md에만 보존."""
+    """Moat Daily 요약 메시지. 종합평가만 송출, 호재/악재/Valuation은 월간 .md에만 보존.
+
+    [!] 종목 헤더와 안정 종목 라인에 매수 매력도 등급(작업 I)을 가시화.
+    """
     flagged = [r for r in results if r.get("flag")]
-    stable_tickers = [r["ticker"] for r in results if not r.get("flag") and not r.get("error")]
+    stable = [r for r in results if not r.get("flag") and not r.get("error")]
     errored = [r for r in results if r.get("error")]
 
     # [!] 0개 — 전 종목 안정
     if not flagged:
         lines = [f"Moat Daily — {date}", ""]
-        if stable_tickers:
-            lines.append(f"안정: {', '.join(stable_tickers)}")
+        if stable:
+            lines.append(f"안정: {', '.join(_stable_label(r) for r in stable)}")
         if errored:
             lines.append(f"⚠️ 분석 실패: {', '.join(r['ticker'] for r in errored)}")
         return ["\n".join(lines).strip() + "\n"]
@@ -224,14 +354,16 @@ def build_summary_chunks(date: str, results: list[dict], chunk_size: int = 5) ->
             comment = r["parsed"]["comment"].strip()
             if not comment:
                 continue
-            lines.append(f"━ {r['ticker']} ━")
+            grade = r.get("grade")
+            header = f"━ {r['ticker']}" + (f" · {grade}" if grade else "") + " ━"
+            lines.append(header)
             lines.append(comment)
             lines.append("")
 
         # 마지막 청크에만 안정/에러 라인
         if idx == total:
-            if stable_tickers:
-                lines.append(f"안정: {', '.join(stable_tickers)}")
+            if stable:
+                lines.append(f"안정: {', '.join(_stable_label(r) for r in stable)}")
             if errored:
                 lines.append(f"⚠️ 분석 실패: {', '.join(r['ticker'] for r in errored)}")
 
@@ -317,6 +449,7 @@ def main() -> int:
     is_weekly_detail_day = now.weekday() == detail_weekday
 
     saved_paths: list[Path] = []
+    fund_rows: list[dict] = []
 
     # ── 1단계: 펀더멘탈 표 (daily 분석보다 먼저 도착) ──
     # yfinance 주 소스 + 무료 폴백 체인 — API 키 불필요, 항상 실행.
@@ -350,6 +483,9 @@ def main() -> int:
         telegram_bot.send_message(f"⚠️ 펀더멘탈 조회 실패 ({e})")
         print(f"[daily_moat] fundamentals 실패: {e}", file=sys.stderr)
 
+    # 펀더멘털 실값 — 종목별 조회용 (프롬프트 주입, 작업 I)
+    fund_by_ticker = {r["ticker"]: r for r in fund_rows}
+
     # ── 2단계: 종목별 claude --print 분석 ──
     prompt_path = ROOT / cfg["paths"]["prompts_dir"] / "daily.md"
     with open(prompt_path, "r", encoding="utf-8") as f:
@@ -367,7 +503,9 @@ def main() -> int:
         with open(moat_path, "r", encoding="utf-8") as f:
             moat_content = f.read()
 
-        prompt = render_prompt(template, ticker, moat_content)
+        fundamentals_str = format_fundamentals_line(fund_by_ticker.get(ticker))
+        lane = load_lane(ticker)
+        prompt = render_prompt(template, ticker, moat_content, fundamentals_str, lane)
 
         try:
             raw = run_claude(prompt)
@@ -376,13 +514,23 @@ def main() -> int:
             results.append({"ticker": ticker, "error": str(e)})
             continue
 
-        path = append_monthly(ticker, date, raw)
+        parsed = parse_output(raw)
+        # 최종 등급은 Python 매트릭스가 authoritative (작업 I.3)
+        grade = compute_grade(parsed["moat_q"], parsed["valuation_bucket"])
+
+        # 월간 .md date 헤더에 보정 후 최종 등급 부가
+        path = append_monthly(ticker, date, raw, grade)
         if path not in saved_paths:
             saved_paths.append(path)
 
-        parsed = parse_output(raw)
         flag = not is_stable(parsed)
-        results.append({"ticker": ticker, "parsed": parsed, "flag": flag})
+        results.append({
+            "ticker": ticker,
+            "parsed": parsed,
+            "flag": flag,
+            "grade": grade,
+            "rec_rationale": parsed["rec_rationale"],
+        })
 
     # 매일: Moat Daily 청크 메시지
     for msg in build_summary_chunks(date, results, chunk_size):

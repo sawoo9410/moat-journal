@@ -1,5 +1,6 @@
 # TXN (Texas Instruments Incorporated) — Moat Journal Profile
 ticker: TXN
+lane: compounder              # 매수 매력도 등급 레인(작업 I)
 name: Texas Instruments Incorporated
 aliases:
   - Texas Instruments

@@ -1,5 +1,6 @@
 # AVGO (Broadcom Inc.) — Moat Journal Profile
 ticker: AVGO
+lane: compounder              # 매수 매력도 등급 레인(작업 I)
 name: Broadcom Inc.
 aliases:
   - Broadcom

@@ -1,5 +1,6 @@
 # QCOM (Qualcomm Inc.) — Moat Journal Profile
 ticker: QCOM
+lane: compounder              # 매수 매력도 등급 레인(작업 I)
 name: Qualcomm Inc.
 aliases:
   - Qualcomm
