@@ -154,16 +154,16 @@ def _build_ticker_block(ticker: str, parsed: dict, max_bullets: int = 3) -> str:
 
 
 def build_summary_chunks(date: str, results: list[dict], chunk_size: int = 5) -> list[str]:
-    """Moat Daily 요약 메시지. [!] 종목을 chunk_size개씩 묶어 N개 메시지 반환."""
+    """Moat Daily 요약 메시지. 종합평가만 송출, 호재/악재/Valuation은 월간 .md에만 보존."""
     flagged = [r for r in results if r.get("flag")]
-    stable = [r for r in results if not r.get("flag") and not r.get("error")]
+    stable_tickers = [r["ticker"] for r in results if not r.get("flag") and not r.get("error")]
     errored = [r for r in results if r.get("error")]
 
     # [!] 0개 — 전 종목 안정
     if not flagged:
         lines = [f"Moat Daily — {date}", ""]
-        if stable:
-            lines.append(f"안정: {', '.join(r['ticker'] for r in stable)}")
+        if stable_tickers:
+            lines.append(f"안정: {', '.join(stable_tickers)}")
         if errored:
             lines.append(f"⚠️ 분석 실패: {', '.join(r['ticker'] for r in errored)}")
         return ["\n".join(lines).strip() + "\n"]
@@ -178,13 +178,17 @@ def build_summary_chunks(date: str, results: list[dict], chunk_size: int = 5) ->
     for idx, chunk in enumerate(chunks, 1):
         lines = [f"Moat Daily — {date} ({idx}/{total})", ""]
         for r in chunk:
-            lines.append(_build_ticker_block(r["ticker"], r["parsed"], max_bullets=3))
+            comment = r["parsed"]["comment"].strip()
+            if not comment:
+                continue
+            lines.append(f"━ {r['ticker']} ━")
+            lines.append(comment)
             lines.append("")
 
         # 마지막 청크에만 안정/에러 라인
         if idx == total:
-            if stable:
-                lines.append(f"안정: {', '.join(r['ticker'] for r in stable)}")
+            if stable_tickers:
+                lines.append(f"안정: {', '.join(stable_tickers)}")
             if errored:
                 lines.append(f"⚠️ 분석 실패: {', '.join(r['ticker'] for r in errored)}")
 
@@ -270,17 +274,26 @@ def main() -> int:
     is_weekly_detail_day = now.weekday() == detail_weekday
 
     # ── 1단계: 펀더멘탈 표 (daily 분석보다 먼저 도착) ──
-    av_key = os.environ.get("ALPHAVANTAGE_API_KEY", "")
-    if av_key:
-        try:
-            fund_rows = fundamentals.fetch_all(tickers, av_key)
-            fund_table = fundamentals.build_fundamentals_table(fund_rows)
-            telegram_bot.send_message(fund_table)
-        except Exception as e:
-            telegram_bot.send_message(f"⚠️ 펀더멘탈 조회 실패 ({e})")
-            print(f"[daily_moat] fundamentals 실패: {e}", file=sys.stderr)
-    else:
-        print("[daily_moat] ALPHAVANTAGE_API_KEY 미설정, 펀더멘탈 스킵", file=sys.stderr)
+    # yfinance 주 소스 + 무료 폴백 체인 — API 키 불필요, 항상 실행.
+    try:
+        fund_rows = fundamentals.fetch_all(tickers)
+        fund_table = fundamentals.build_fundamentals_table(fund_rows)
+        telegram_bot.send_message(fund_table)
+
+        # 주 소스(yfinance) 외 폴백 소스가 실제로 필드를 채웠으면 알림.
+        fallback = {
+            r["ticker"]: [s for s in r.get("sources", []) if s != "yfinance"]
+            for r in fund_rows
+        }
+        fallback = {t: srcs for t, srcs in fallback.items() if srcs}
+        if fallback:
+            notice = "ℹ️ 펀더멘털 폴백 소스 사용:\n" + "\n".join(
+                f"  {t}: {', '.join(srcs)}" for t, srcs in fallback.items()
+            )
+            telegram_bot.send_message(notice)
+    except Exception as e:
+        telegram_bot.send_message(f"⚠️ 펀더멘탈 조회 실패 ({e})")
+        print(f"[daily_moat] fundamentals 실패: {e}", file=sys.stderr)
 
     # ── 2단계: 종목별 claude --print 분석 ──
     prompt_path = ROOT / cfg["paths"]["prompts_dir"] / "daily.md"
