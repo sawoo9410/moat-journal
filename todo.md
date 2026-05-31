@@ -114,9 +114,11 @@ for idx, chunk in enumerate(chunks, start=1):
 2. **D/E 항상 N/A** — AlphaVantage `OVERVIEW`에 부채비율 필드 자체가 없음(55개 필드 중 0개). 게다가 `fundamentals.py:48` 로직 반전 버그로 어차피 항상 None.
 3. **"52주 고점 대비" 가짜값** — `fundamentals.py:62`이 현재가 대신 `AnalystTargetPrice`(애널리스트 목표가)를 사용. OVERVIEW에 실시간 가격 없음.
 
-### 결정: AlphaVantage → **yfinance (Yahoo Finance)**
+### 결정: AlphaVantage → **yfinance (Yahoo Finance) 주 소스 + 무료 폴백 체인**
 
 실측 검증 완료(yfinance 1.2.0, /opt/homebrew/bin/python3 3.9.13): **API 키 불필요, 12종목 전부**(소형주 AMBQ 포함) 6개 필드 모두 반환. D/E·52주 고점대비 실값 확보 → ②③ 동시 해결. 무료·무한도 → ① 해결.
+
+단, Yahoo는 비공식 엔드포인트라 레이트리밋(`Too Many Requests`)·일시 빈 응답 가능. **한 소스로 부족하면 다른 무료 소스로 보완**(F.6 폴백 체인). 모든 소스는 무료 유지.
 
 ### F.1 의존성
 
@@ -155,11 +157,31 @@ for idx, chunk in enumerate(chunks, start=1):
 
 `build_fundamentals_table` 레이아웃(PER/ROE/D/E/Margin/52주/배당) 유지. 이제 D/E·52주가 실값으로 채워짐. 배당 표시 `f"{div}%"` 그대로(이미 퍼센트 저장).
 
+### F.6 다중 소스 폴백 체인 (graceful degradation)
+
+원칙: **필드 단위 merge** — 주 소스로 채우고, None인 필드만 다음 소스로 보완. 종목 단위로 빈 결과/예외면 다음 소스로 재시도. 전 소스 실패 시에만 `{"ticker","error"}`.
+
+소스 우선순위 (전부 무료):
+
+| 순위 | 소스 | 키 | 제공 필드 | 비고 |
+|------|------|-----|-----------|------|
+| 1 (주) | **yfinance** (Yahoo `.info`) | 불필요 | 6필드 전부 | 기본. 검증 완료 |
+| 2 | **stooq** (CSV `stooq.com/q/d/l`) | 불필요 | 현재가·52주 고점(1년 일봉 max로 계산) | yfinance 가격/52주 비었을 때. 펀더멘털 비율은 미제공 |
+| 3 (선택) | **Finnhub** `/stock/metric?metric=all` | 무료 키 | peTTM·roeTTM·52주·배당 등 | `.env`에 `FINNHUB_API_KEY` 있을 때만 활성 |
+| 4 (선택) | **Financial Modeling Prep** `/ratios-ttm`+`/quote` | 무료 키 | PER·ROE·D/E·margin·가격·52주·배당 | `.env`에 `FMP_API_KEY` 있을 때만 활성 |
+
+구현 지침:
+- 키 없는 소스(yfinance, stooq)만으로 전 필드 충족 가능 → **키 없이도 완전 동작**이 기본선.
+- 키 필요한 3·4는 `.env`에 키 있을 때만 호출(없으면 조용히 건너뜀) — "무료" 원칙 위배 없음, 키는 어디까지나 보강용.
+- 소스별 fetch 함수 분리(`_fetch_yfinance`, `_fetch_stooq`, …) → `fetch_fundamentals(ticker)`가 우선순위대로 호출하며 None 필드 merge.
+- 소스 간 필드 단위 정규화 주의(D/E 비율 vs 퍼센트, 배당 소수 vs 퍼센트) — 각 fetch 함수가 **내부 정규화 후 동일 단위로 반환**(F.2 표 기준: ROE/Margin/배당=%, D/E=비율).
+
 ### F.5 검증 (수정 세션 후)
 
 1. `/opt/homebrew/bin/python3 -c "import automation.src.fundamentals as f; print(f.build_fundamentals_table(f.fetch_all(['GOOGL','MCD','KO','AMBQ'])))"` — 4종목 카드에 PER/ROE/D/E/Margin/52주/배당 채워짐(MCD ROE/D/E만 N/A 허용), 빈 카드 없음.
-2. `launchctl start com.moat-journal.daily` 1회 발사 → 텔레그램에 펀더멘털 카드 도착(전 종목, D/E·52주 실값).
-3. 로그에 `⚠️ 펀더멘탈 조회 실패` 없음 확인.
+2. yfinance 강제 실패 시뮬(예: 잘못된 티커/네트워크 차단) → stooq 폴백으로 최소 가격·52주는 채워지는지 확인.
+3. `launchctl start com.moat-journal.daily` 1회 발사 → 텔레그램에 펀더멘털 카드 도착(전 종목, D/E·52주 실값).
+4. 로그에 `⚠️ 펀더멘탈 조회 실패` 없음 확인.
 
 ---
 
