@@ -1,3 +1,4 @@
+import csv
 import os
 import re
 import subprocess
@@ -127,6 +128,71 @@ def append_monthly(ticker: str, date: str, raw: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# 펀더멘털 시계열 CSV (작업 J)
+# ---------------------------------------------------------------------------
+
+FUND_CSV_HEADER = [
+    "date", "per", "roe", "debt_equity", "profit_margin",
+    "drop_from_high_pct", "dividend_yield", "source",
+]
+
+
+def append_fundamentals_csv(ticker: str, date: str, row: dict):
+    """펀더멘털 1행을 companies/{ticker}/fundamentals.csv에 멱등 append.
+
+    - 파일 없으면 헤더 먼저 기록.
+    - 같은 date 행이 이미 있으면 덮어씀(수동 재실행 멱등).
+    - row.get("error") 있으면 기록 안 함 → None 반환(빈 행 오염 방지).
+    - 단위는 F.2 정규화 그대로(ROE/Margin/배당=%, D/E=비율). None 필드는 빈 칸.
+    - source = 그 행을 채운 소스(예 'yfinance' / 'yfinance+stooq').
+    반환: 기록한 CSV 경로(Path) 또는 None.
+    """
+    if row.get("error"):
+        return None
+
+    out = ROOT / "companies" / ticker / "fundamentals.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    def cell(key: str):
+        v = row.get(key)
+        return "" if v is None else v
+
+    new_row = {
+        "date": date,
+        "per": cell("per"),
+        "roe": cell("roe"),
+        "debt_equity": cell("debt_equity"),
+        "profit_margin": cell("profit_margin"),
+        "drop_from_high_pct": cell("drop_from_high_pct"),
+        "dividend_yield": cell("dividend_yield"),
+        "source": "+".join(row.get("sources", [])),
+    }
+
+    # 기존 행 로드 → date 키로 멱등 갱신(순서 보존)
+    rows_by_date: dict[str, dict] = {}
+    order: list[str] = []
+    if out.exists():
+        with open(out, "r", encoding="utf-8", newline="") as f:
+            for r in csv.DictReader(f):
+                d = r.get("date")
+                if not d:
+                    continue
+                if d not in rows_by_date:
+                    order.append(d)
+                rows_by_date[d] = r
+    if date not in rows_by_date:
+        order.append(date)
+    rows_by_date[date] = new_row
+
+    with open(out, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=FUND_CSV_HEADER)
+        writer.writeheader()
+        for d in order:
+            writer.writerow({k: rows_by_date[d].get(k, "") for k in FUND_CSV_HEADER})
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 메시지 빌더
 # ---------------------------------------------------------------------------
 
@@ -250,10 +316,22 @@ def main() -> int:
     now = datetime.now(ZoneInfo(tz))
     is_weekly_detail_day = now.weekday() == detail_weekday
 
+    saved_paths: list[Path] = []
+
     # ── 1단계: 펀더멘탈 표 (daily 분석보다 먼저 도착) ──
     # yfinance 주 소스 + 무료 폴백 체인 — API 키 불필요, 항상 실행.
     try:
         fund_rows = fundamentals.fetch_all(tickers)
+
+        # 시계열 CSV 적재(작업 J) — 텔레그램 전송과 독립(append 실패가 카드 전송을 막지 않음).
+        for r in fund_rows:
+            try:
+                csv_path = append_fundamentals_csv(r["ticker"], date, r)
+                if csv_path and csv_path not in saved_paths:
+                    saved_paths.append(csv_path)
+            except Exception as e:
+                print(f"[daily_moat] fundamentals csv append 실패 {r['ticker']}: {e}", file=sys.stderr)
+
         fund_table = fundamentals.build_fundamentals_table(fund_rows)
         telegram_bot.send_message(fund_table)
 
@@ -278,7 +356,6 @@ def main() -> int:
         template = f.read()
 
     results = []
-    saved_paths: list[Path] = []
 
     for ticker in tickers:
         moat_path = ROOT / cfg["paths"]["companies_dir"] / ticker / "moat.md"
