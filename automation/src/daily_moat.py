@@ -130,29 +130,6 @@ def append_monthly(ticker: str, date: str, raw: str) -> Path:
 # 메시지 빌더
 # ---------------------------------------------------------------------------
 
-def _build_ticker_block(ticker: str, parsed: dict, max_bullets: int = 3) -> str:
-    """종목 하나의 개조식 블록 생성. build_summary / build_detail 공용."""
-    lines = [f"━ {ticker} ━"]
-
-    bull_items = [b for b in _normalize_lines(parsed["bullish"]) if b != "없음"]
-    bull_items = _top_n(bull_items, max_bullets)
-    if bull_items:
-        lines.append("호재")
-        lines.extend(f"• {b}" for b in bull_items)
-
-    bear_items = [b for b in _normalize_lines(parsed["bearish"]) if b != "없음"]
-    bear_items = _top_n(bear_items, max_bullets)
-    if bear_items:
-        lines.append("악재")
-        lines.extend(f"• {b}" for b in bear_items)
-
-    comment = parsed["comment"].strip()
-    if comment:
-        lines.append(f"종합평가: {comment}")
-
-    return "\n".join(lines)
-
-
 def build_summary_chunks(date: str, results: list[dict], chunk_size: int = 5) -> list[str]:
     """Moat Daily 요약 메시지. 종합평가만 송출, 호재/악재/Valuation은 월간 .md에만 보존."""
     flagged = [r for r in results if r.get("flag")]

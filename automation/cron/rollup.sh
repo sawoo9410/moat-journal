@@ -3,6 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
+# 월별 로그 분리 — 모든 wrapper echo + python 출력을 단일 월별 파일로
+mkdir -p automation/logs
+MONTH="$(date +%Y-%m)"
+exec >> "automation/logs/rollup-$MONTH.log" 2>&1
+
 if [ -f .env ]; then
   set -a
   # shellcheck disable=SC1091
@@ -69,4 +74,4 @@ PYTHON="${PYTHON:-/opt/homebrew/bin/python3}"
   echo "[wrapper] python: $PYTHON ($($PYTHON --version 2>&1))"
 } >&2
 
-"$PYTHON" automation/src/rollup.py "$@" 2>&1 | tee -a automation/logs/rollup.log
+"$PYTHON" automation/src/rollup.py "$@"

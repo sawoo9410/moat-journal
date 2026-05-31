@@ -9,7 +9,7 @@ export HOME="${HOME:-/Users/seosang-u}"
 export USER="${USER:-seosang-u}"
 export PATH="/Users/seosang-u/.local/bin:$PATH"
 
-LOG="/Users/seosang-u/moat-journal/automation/logs/token-refresh.log"
+LOG="/Users/seosang-u/moat-journal/automation/logs/token-refresh-$(date +%Y-%m).log"
 mkdir -p "$(dirname "$LOG")"
 
 {
