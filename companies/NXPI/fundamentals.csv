@@ -53,3 +53,4 @@ date,per,roe,debt_equity,profit_margin,drop_from_high_pct,dividend_yield,source
 2026-07-29,24.7,25.8,1.04,21.0,-23.8,1.5,yfinance
 2026-07-30,23.0,25.8,1.04,21.0,-29.1,1.5,yfinance
 2026-07-31,48.9,27.9,0.93,22.6,-27.9,1.7,yfinance
+2026-08-01,45.6,27.9,0.93,22.6,-32.6,1.6,yfinance
