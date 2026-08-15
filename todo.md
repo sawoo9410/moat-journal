@@ -60,9 +60,12 @@ indices/{ID}/
 ```
 
 `indices/{ID}/fundamentals.csv` 컬럼:
-`date, price, per, dividend_yield, distribution_yield, drop_from_high_pct, ma50_gap_pct, ma200_gap_pct, currency, source`
+`date, price, per, dist_yield_ttm, dist_yield_ann, drop_from_high_pct, ma50_gap_pct, ma200_gap_pct, currency, source`
 - `per`: self 또는 valuation_source 상속(상속 시 source에 `per<-{SRC}` 표기)
-- `distribution_yield`: 커버드콜 핵심. yfinance yield 불안정 → best-effort 수집 + **K.8 별도소스 숙제** 플래그
+- **분배율(확정)**: `yf.Ticker().info["yield"]` **금지**(부정확 — 실측상 QQQI 1.3%↔실제 14.8%, SPYI 2.4%↔12.5%, GPIQ 0.65%↔9.8%). 대신 **`yf.Ticker().dividends`(실제 지급 분배금)로 직접 계산** — US·KR 모두 정확.
+  - `dist_yield_ttm` = 최근 12개월 분배금 합 ÷ 현재가 (주지표, 안정적)
+  - `dist_yield_ann` = 최근 분배 × 연간 지급횟수 ÷ 현재가 (현재 런레이트)
+  - source 라벨 `dividends`. (KR 458760·0008S0·458730도 `.dividends` 정상.)
 - `ma50_gap_pct`/`ma200_gap_pct`: `(price/MA - 1)*100`, 자기 가격 히스토리 기반
 - 날짜 멱등 append (기존 CSV 로직 재사용)
 
@@ -89,12 +92,14 @@ indices/{ID}/
 
 ## K.6 QLD 라운드트립 (유일한 매도 신호)
 
-QLD는 적립·무매도가 아니라 **극단 낙폭 진입 → 회복 청산 → 손절**. 별도 로직 `qld_signal(row, hist_calib)`:
-- **진입**: 낙폭이 자기 history 최심부(예: drop ≤ p5~p10 분위, 코어 지수 QQQM도 동반 극단낙폭이면 가점) → `진입(극단낙폭)`.
+QLD는 적립·무매도가 아니라 **극단 낙폭 진입 → 회복 청산 → 손절**. 별도 로직 `qld_signal(row, state)`:
+- **진입**: ATH 대비 낙폭 **-35% 알림 시작, -40~-45%에서 분할**(코어 지수 QQQM 동반 극단낙폭이면 가점) → `진입(극단낙폭)`. 소액만.
 - **보유**: 진입선~회복선 사이 → `보유`.
-- **청산**: 회복(예: price가 MA50 상향 돌파 또는 낙폭이 dd_shallow보다 얕아짐) → `청산(회복)`.
-- **손절**: 진입가 대비 -X%(파라미터, 기본 예: -15%) 추가 하락 → `손절`.
-- 출력 라벨이 적립 종목과 다름 — 텔레그램/월간 md에 별도 표기. 진입가/손절가 상태는 `indices/QLD/state.yaml`에 보존(라운드트립 추적).
+- **청산**: 진입시점 고점 회복(또는 price가 MA50 상향 돌파) → `청산(회복)`.
+- **손절**: 진입가 대비 **-18%**(존 -15~-20%) 추가 하락 → `손절`.
+- 진입가/손절가/ATH 상태는 `indices/QLD/state.yaml`에 보존(라운드트립 추적). 출력 라벨이 적립 종목과 다름 — 텔레그램/월간 md 별도 표기.
+
+**백테스트 근거(QLD 2006~2026, 5069일)**: 손절 -8~-12%는 휩쏘로 승률 0% → 반드시 -15% 이상. 엔트리 -25%는 얕아 노이즈, -55%는 20년 2회뿐. -35%/-15%가 표본 최다(5거래·60%승·평균+35%). 손절의 핵심 가치는 2008 방어(진입 후 QLD -85%까지 갔으나 손절이 -24%에서 차단). **표본 극소(깊은 낙폭 2~5회)라 확정값 아님 — 라이브 데이터로 재보정할 시작 규칙. `automation/src/tools/qld_backtest.py`로 재실행 가능하게 이관.**
 
 ## K.7 프롬프트 (`automation/prompts/index.md`)
 
@@ -109,7 +114,10 @@ QLD는 적립·무매도가 아니라 **극단 낙폭 진입 → 회복 청산 �
 - `automation/calibration.yaml`에 index ID 항목 추가(dd_typical/dd_shallow/per_reliable/per_cheap/per_rich).
   - `recalibrate.py`를 indices/*/fundamentals.csv도 스캔하도록 확장(경로 일반화).
   - 최초 임계값은 history 최소 ~30일 쌓인 뒤 하네스+recalibrate로 fit. 그 전엔 cal 비어있어 게이트 미적용(하위호환).
-- **미해결 숙제**: (a) 커버드콜 **분배율 정확 소스**(yfinance yield 부정확 — 발행사/NEOS/JPM 또는 KR은 naver/발행사). (b) KR ETF NAV/프리미엄 데이터 소스. (c) QLD 손절% 파라미터 백테스트 확정.
+- **숙제 정리**:
+  - (a) 분배율 소스 — **확정: yfinance `.dividends` 직접 계산**(K.3). `.info["yield"]` 폐기. Toss API는 공식 없음(비공식 엔드포인트 = fragile+ToS) → 제외.
+  - (b) KR NAV/괴리율 — **지금은 불필요**(분배율은 위로 해결). 필요해지면 **네이버 금융/KRX**(Toss 아님). 침식은 자체 가격추세 프록시로 대체.
+  - (c) QLD 손절% — **확정: -18%(존 -15~-20%), 엔트리 -35~-45%**(K.6 백테스트). 표본 극소라 라이브 재보정.
 
 ## K.9 텔레그램 분리
 
