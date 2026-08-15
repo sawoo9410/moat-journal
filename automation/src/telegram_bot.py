@@ -43,7 +43,24 @@ def load_config(target: str = "moat") -> dict:
             )
         return {"token": token, "chat_id": chat_id}
 
-    raise RuntimeError(f"알 수 없는 target: {target!r} (moat|index 중 하나여야 함)")
+    if target == "alert":
+        # 트리거 경보 전용 채널(@drop_trigger_alert_bot). 지수·개별주 등 모든 트리거가 여기로 모인다.
+        # 토큰: 전용 미설정 시 moat 봇 토큰으로 폴백. chat_id는 반드시 alert 것 사용.
+        token = os.environ.get("MOAT_ALERT_TELEGRAM_BOT_TOKEN") or os.environ.get("MOAT_TELEGRAM_BOT_TOKEN")
+        chat_id = os.environ.get("MOAT_ALERT_TELEGRAM_CHAT_ID")
+        missing = []
+        if not token:
+            missing.append("MOAT_ALERT_TELEGRAM_BOT_TOKEN(또는 폴백용 MOAT_TELEGRAM_BOT_TOKEN)")
+        if not chat_id:
+            missing.append("MOAT_ALERT_TELEGRAM_CHAT_ID")
+        if missing:
+            raise RuntimeError(
+                f"환경변수 누락: {', '.join(missing)}. "
+                f".env 파일에 설정 후 source .env 또는 cron wrapper에서 로드해주세요."
+            )
+        return {"token": token, "chat_id": chat_id}
+
+    raise RuntimeError(f"알 수 없는 target: {target!r} (moat|index|alert 중 하나여야 함)")
 
 
 def _split_message(text: str, limit: int = MAX_LEN) -> list[str]:

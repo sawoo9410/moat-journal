@@ -15,9 +15,9 @@ if [ -f .env ]; then
   set +a
 fi
 
-# index 텔레그램 env — 미설정 시 telegram_bot에서 moat 봇 토큰 폴백
-export MOAT_INDEX_TELEGRAM_BOT_TOKEN="${MOAT_INDEX_TELEGRAM_BOT_TOKEN:-}"
-export MOAT_INDEX_TELEGRAM_CHAT_ID="${MOAT_INDEX_TELEGRAM_CHAT_ID:-}"
+# alert 텔레그램 env — 경보 전용 채널. 토큰 미설정 시 telegram_bot에서 moat 봇 토큰 폴백
+export MOAT_ALERT_TELEGRAM_BOT_TOKEN="${MOAT_ALERT_TELEGRAM_BOT_TOKEN:-}"
+export MOAT_ALERT_TELEGRAM_CHAT_ID="${MOAT_ALERT_TELEGRAM_CHAT_ID:-}"
 
 export HOME="${HOME:-/Users/seosang-u}"
 export USER="${USER:-seosang-u}"

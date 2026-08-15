@@ -5,6 +5,8 @@
 - 기준: 전월 마지막 거래일 종가. 현재가는 fast_info 최신값(15:15 KST 실행 시 KR은 라이브, US는 전일 종가).
 - de-dup: 이번 달에 이미 알린 임계보다 더 깊어질 때만 1회 알림. 매달 초 리셋. state=indices/trigger_state.yaml.
 - 07:00 index_daily(매수권장)와 분리된 별도 잡(15:15 KST). LLM 미사용 — 빠르고 저렴.
+- 전송: target="alert" (경보 전용 채팅 @drop_trigger_alert_bot). 개별주 등 향후 트리거도 같은 방으로
+  모으고, 헤더 "⚠️ {종류} · {대상}" 으로 출처를 구분한다.
 
 사용:
     python automation/src/index_trigger.py            # 판정 + 신규 돌파 시 전송 + state 갱신
@@ -28,6 +30,8 @@ TZ = "Asia/Seoul"
 
 THRESHOLDS = [-0.03, -0.05, -0.07, -0.10]   # 하향 돌파 임계(음수)
 TRIGGER_STRUCTURES = {"tracker", "dividend"}
+
+ALERT_HEADER = "⚠️ 낙폭 · 지수 — 전월말 대비"   # "⚠️ {종류} · {대상}" 포맷
 
 
 def load_instruments() -> list:
@@ -120,10 +124,10 @@ def main() -> int:
 
     if fired:
         fired.sort(key=lambda x: x[0])   # 낙폭 깊은 순
-        lines = ["⚠️ 낙폭 트리거 — 전월말 대비", ""]
+        lines = [ALERT_HEADER, ""]
         for drop, iid, name, level in fired:
             lines.append(f"{name} ({iid})  {drop*100:+.1f}% · 트리거 {int(level*100)}%")
-        telegram_bot.send_message("\n".join(lines), target="index")
+        telegram_bot.send_message("\n".join(lines), target="alert")
         print(f"[trigger] {len(fired)}건 알림 전송")
         save_state(state)
     else:
