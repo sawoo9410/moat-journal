@@ -135,42 +135,54 @@ def deepening_lines(iid: str, level: float, rules: dict, ind: dict, vix: Optiona
     if ri is not None:
         out.append(f"   그냥 회복 {float(ri)*100:.0f}%")
 
-    # 관측 지표로 조건부 확률 선택
-    obs, hits = [], []
+    # 관측 지표 → 충족 개수(스코어) → 단일 결합 확률.
+    # marginal을 여러 개 나열하면 판단을 사용자에게 미루는 셈이라 하나로 합친다.
+    obs = []
     if ind.get("above_ma200") is not None:
         obs.append("MA200 " + ("위" if ind["above_ma200"] else "아래"))
     if ind.get("ath_dd") is not None:
         obs.append(f"ATH {ind['ath_dd']*100:+.1f}%")
     if vix is not None:
         obs.append(f"VIX {vix:.0f}")
-    if obs:
-        out += ["", "🔎 " + " · ".join(obs)]
 
-    for c in row.get("conditions") or []:
-        key, met = c.get("key"), None
+    keys = row.get("score_keys") or []
+    met, unknown = 0, False
+    for key in keys:
+        v = None
         if key == "near_ath" and ind.get("ath_dd") is not None:
-            met = ind["ath_dd"] > -0.20
+            v = ind["ath_dd"] > -0.20
         elif key == "above_ma200" and ind.get("above_ma200") is not None:
-            met = ind["above_ma200"]
+            v = ind["above_ma200"]
         elif key == "below_ma200" and ind.get("above_ma200") is not None:
-            met = not ind["above_ma200"]
+            v = not ind["above_ma200"]
         elif key == "vix_low" and vix is not None:
-            met = vix < 25
+            v = vix < 25
         elif key == "vol_high" and ind.get("vol20") is not None:
-            met = ind["vol20"] >= 0.45   # 연율 실현변동성 45% — 표본 중앙값
-        if met is None:
-            continue
-        # 키 이름 주의: YAML 1.1이 yes/no를 불리언으로 파싱하므로 p_yes/p_no를 쓴다.
-        p = float(c["p_yes"] if met else c["p_no"])
-        hits.append(f"   {c['label']}{'' if met else ' 아님'} → {p*100:.0f}%")
-    if hits:
-        out += ["   ─ 조건부 심화 확률"] + hits
+            v = ind["vol20"] >= 0.45   # 연율 실현변동성 45% — 표본 중앙값
+        if v is None:
+            unknown = True             # 지표 조회 실패 → 스코어 판정 포기
+            break
+        met += int(v)
+
+    sp = row.get("score_probs") or {}
+    cell = None if (unknown or not keys) else (sp.get(str(met)) or sp.get(met))
+    if obs:
+        line = "🔎 " + " · ".join(obs)
+        if cell:
+            line += f"  → {row.get('score_label','신호')} {met}/{len(keys)}"
+        out += ["", line]
+    if cell:
+        base_p = (probs.get(f"{float(row['target']):.3f}".rstrip("0"))
+                  or probs.get(str(row["target"])))
+        tail = f" (무조건 {float(base_p)*100:.0f}%)" if base_p else ""
+        out.append(f"   {float(row['target'])*100:.1f}% 도달 확률 "
+                   f"{float(cell['p'])*100:.0f}%{tail}  n={cell.get('n','?')}")
 
     adv = row.get("advice") or {}
     if adv.get("wait_to") is not None:
-        out += ["", "⏳ 대기 권장",
+        out += ["", f"⏳ {float(adv['wait_to'])*100:.0f}%까지 대기 권장",
                 f"   즉시 매수 연 {float(adv.get('immediate_annual',0))*100:.0f}%"
-                f" vs {float(adv['wait_to'])*100:.0f}% 대기 연 {float(adv.get('wait_annual',0))*100:.0f}%"]
+                f" vs 대기 연 {float(adv.get('wait_annual',0))*100:.0f}%"]
     return out
 
 

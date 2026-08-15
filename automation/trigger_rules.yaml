@@ -67,26 +67,37 @@ deepening:
       recover_immediately: 0.03        # 추가 하락 없이 바로 회복한 비율
       probs: {"-0.095": 0.81, "-0.12": 0.73, "-0.14": 0.54,
               "-0.16": 0.47, "-0.185": 0.41, "-0.21": 0.30}
-      # 조건 충족 시 '다음 중간지점(-9.5%)' 도달 확률. 미충족 시 값도 같이 둔다.
-      conditions:
-        - {key: near_ath, label: "ATH 대비 -20% 이내", p_yes: 0.89, p_no: 0.76, n_yes: 28}
-        - {key: vix_low,  label: "VIX < 25",          p_yes: 0.88, p_no: 0.71, n_yes: 41}
-        - {key: above_ma200, label: "MA200 위",        p_yes: 0.88, p_no: 0.75, n_yes: 33}
+      # 결합 확률 — marginal 여러 개 대신 '충족 개수'로 단일 값을 낸다.
+      # 세 지표는 서로 상관 0.38~0.51로 사실상 "하락 초기냐"라는 한 요인을 세 각도로 본 것.
+      target: -0.095                   # 이 확률이 가리키는 지점(다음 구간 중간)
+      score_keys: [near_ath, vix_low, above_ma200]
+      score_label: "하락 초기 신호"
+      score_probs:                     # 충족 개수 → target 도달 확률
+        "0": {p: 0.68, n: 19}
+        "1": {p: 0.78, n: 18}
+        "2": {p: 0.91, n: 32}          # 2개(92%)·3개(90%)가 사실상 동일해 통합
+        "3": {p: 0.91, n: 32}
       advice: {wait_to: -0.12, immediate_annual: 0.30, wait_annual: 0.47}
     "-0.12":
       n: 47
       recover_immediately: 0.09
       probs: {"-0.14": 0.77, "-0.16": 0.64, "-0.185": 0.55, "-0.21": 0.49}
       # 이 단계에선 방향이 뒤집힌다 — '베어장 확인'이 심화 신호다.
-      conditions:
-        - {key: below_ma200, label: "MA200 아래", p_yes: 0.83, p_no: 0.65, n_yes: 29}
-        - {key: vol_high,    label: "변동성 높음", p_yes: 0.83, p_no: 0.65, n_yes: 29}
+      target: -0.14
+      score_keys: [below_ma200, vol_high]
+      score_label: "베어장 확인"
+      score_probs:
+        "0": {p: 0.55, n: 11}
+        "1": {p: 0.83, n: 12}
+        "2": {p: 0.83, n: 23}
       advice: {wait_to: -0.16, immediate_annual: 0.30, wait_annual: 0.39}
     "-0.16":
       n: 24
       recover_immediately: 0.04
       probs: {"-0.185": 0.88, "-0.21": 0.71}
-      conditions: []
+      target: -0.185
+      score_keys: []          # 표본 24건 — 조건을 가를 만큼이 안 된다. 무조건 확률만 쓴다.
+      score_probs: {}
       advice: {wait_to: -0.21, immediate_annual: 0.22, wait_annual: 0.28}
 
 # ── 근거 (dd_calibration.py 산출값) ─────────────────────────────────
