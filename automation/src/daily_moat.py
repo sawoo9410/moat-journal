@@ -536,11 +536,12 @@ def main() -> int:
     for msg in build_summary_chunks(date, results, chunk_size):
         telegram_bot.send_message(msg)
 
-    # 일요일만: 전 종목 detail
+    # 일요일만: 전 종목 detail — 텔레그램 전송은 중단, 로그로만 기록 (실행/기록은 유지)
     if is_weekly_detail_day:
         for r in results:
             if r.get("parsed"):
-                telegram_bot.send_message(build_detail(date, r["ticker"], r["parsed"]))
+                detail = build_detail(date, r["ticker"], r["parsed"])
+                print(f"[daily_moat] weekly detail (텔레그램 미전송)\n{detail}", file=sys.stderr)
 
     git_commit(date, saved_paths)
     return 0
