@@ -1,0 +1,98 @@
+# buy-timing 수치 게이트 캘리브레이션 — history in-sample fit (자동 생성)
+# 생성: 2026-08-15 | 윈도우: 2026-05-31..2026-08-15 (n=69, 일별)
+# 방법:
+#   - per_reliable/per_cheap/per_rich: 하네스(종목별 LLM)가 CSV+월간 md 판독해 판정
+#     (이 윈도우엔 실적 재작성/일회성 이익으로 GOOGL·OXY·NXPI·TXN·AMZN·AMBQ PER 신뢰불가 → PER 게이트 off, 낙폭만)
+#   - dd_typical(Gate A dip선): too_loose 종목은 p25(더 깊게), 그 외 median
+#   - dd_shallow(Gate B froth선): p75
+# 게이트는 강등만 함(자본보존 편향). too_tight(OXY)는 이 레이어로 교정 불가 — 상단(프롬프트/밸류) 사안.
+# 주기적 재보정 필요: automation/src/tools/recalibrate.py 재실행 → 이 파일 갱신.
+meta:
+  generated: "2026-08-15"
+  window: {start: "2026-05-31", end: "2026-08-15", n: 69}
+  method: "per: harness reliability judgment; drawdown: empirical median/p25/p75"
+tickers:
+  GOOGL:
+    per_reliable: false
+    per_cheap: null
+    per_rich: null
+    dd_typical: -15.1    # p25(too_loose)
+    dd_shallow: -10.3    # p75
+    looseness: too_loose
+  KO:
+    per_reliable: true
+    per_cheap: 25.3
+    per_rich: 27.0
+    dd_typical: -3.8    # median
+    dd_shallow: -1.9    # p75
+    looseness: ok
+  MCD:
+    per_reliable: true
+    per_cheap: 22.0
+    per_rich: 23.2
+    dd_typical: -19.9    # median
+    dd_shallow: -18.2    # p75
+    looseness: ok
+  QCOM:
+    per_reliable: true
+    per_cheap: 18.5
+    per_rich: 22.9
+    dd_typical: -30.0    # median
+    dd_shallow: -18.1    # p75
+    looseness: ok
+  OXY:
+    per_reliable: false
+    per_cheap: null
+    per_rich: null
+    dd_typical: -17.8    # median
+    dd_shallow: -15.6    # p75
+    looseness: too_tight
+  NVDA:
+    per_reliable: true
+    per_cheap: 30.6
+    per_rich: 32.5
+    dd_typical: -15.4    # p25(too_loose)
+    dd_shallow: -10.4    # p75
+    looseness: too_loose
+  NXPI:
+    per_reliable: false
+    per_cheap: null
+    per_rich: null
+    dd_typical: -18.4    # median
+    dd_shallow: -11.4    # p75
+    looseness: ok
+  TXN:
+    per_reliable: false
+    per_cheap: null
+    per_rich: null
+    dd_typical: -12.8    # median
+    dd_shallow: -9.2    # p75
+    looseness: ok
+  AMZN:
+    per_reliable: false
+    per_cheap: null
+    per_rich: null
+    dd_typical: -14.4    # p25(too_loose)
+    dd_shallow: -7.9    # p75
+    looseness: too_loose
+  AMBQ:
+    per_reliable: false
+    per_cheap: null
+    per_rich: null
+    dd_typical: -12.5    # median
+    dd_shallow: -7.1    # p75
+    looseness: ok
+  AVGO:
+    per_reliable: true
+    per_cheap: 62.0
+    per_rich: 69.0
+    dd_typical: -21.6    # median
+    dd_shallow: -16.9    # p75
+    looseness: ok
+  O:
+    per_reliable: true
+    per_cheap: 49.5
+    per_rich: 52.5
+    dd_typical: -9.4    # p25(too_loose)
+    dd_shallow: -6.0    # p75
+    looseness: too_loose

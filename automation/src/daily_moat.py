@@ -16,11 +16,27 @@ import telegram_bot
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "automation" / "config.yaml"
+CALIB_PATH = ROOT / "automation" / "calibration.yaml"
 
 
 def load_yaml_config() -> dict:
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def load_calibration() -> dict:
+    """buy-timing 수치 게이트 임계값(history fit). 없거나 손상되면 {} — 매트릭스만 동작(하위호환)."""
+    if not CALIB_PATH.exists():
+        return {}
+    try:
+        return yaml.safe_load(CALIB_PATH.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        print(f"[daily_moat] calibration.yaml 로드 실패 → 게이트 미적용: {e}", file=sys.stderr)
+        return {}
+
+
+def ticker_calibration(calibration: dict, ticker: str) -> dict:
+    return (calibration.get("tickers") or {}).get(ticker) or {}
 
 
 def today_str(tz_name: str) -> str:
@@ -160,34 +176,101 @@ GRADE_MATRIX = {
 }
 
 
-def _norm_moat_q(s: str):
+# 등급 강도 순서(강한 매수 → 회피). 수치 게이트의 강등 계산에 사용.
+GRADE_NOTCHES = ["신규매수 적기", "매수 고려", "관망", "회피"]
+
+# 뉴스가 조용해도 [!]로 승격할 actionable 등급(이슈 2).
+STRONG_GRADES = {"신규매수 적기", "회피"}
+
+
+def _downgrade(grade: str, steps: int = 1) -> str:
+    try:
+        i = GRADE_NOTCHES.index(grade)
+    except ValueError:
+        return grade
+    return GRADE_NOTCHES[min(i + steps, len(GRADE_NOTCHES) - 1)]
+
+
+def _norm_pick(s: str, keys: tuple, axis: str):
+    """값 문자열에서 정의된 키를 찾되, 리스트 순서가 아니라 **문자열 등장 위치**로 선택.
+
+    헤지성 다중 매칭('고평가에서 적정으로')이면 선행 키를 채택하고 경고를 남긴다(이슈 4).
+    """
     s = s or ""
-    for k in ("견고", "좁음", "약화", "훼손"):
-        if k in s:
-            return k
-    return None
+    found = sorted((s.find(k), k) for k in keys if k in s)
+    if not found:
+        return None
+    if len(found) > 1:
+        print(
+            f"[daily_moat] {axis} 다중 매칭 {[k for _, k in found]} → 선행 '{found[0][1]}' 채택 "
+            f"(원문={s!r})",
+            file=sys.stderr,
+        )
+    return found[0][1]
+
+
+def _norm_moat_q(s: str):
+    return _norm_pick(s, ("견고", "좁음", "약화", "훼손"), "Moat질")
 
 
 def _norm_valuation(s: str):
-    s = s or ""
-    for k in ("저평가", "적정", "고평가"):
-        if k in s:
-            return k
-    return None
+    return _norm_pick(s, ("저평가", "적정", "고평가"), "밸류")
 
 
-def compute_grade(moat_q: str, valuation_bucket: str) -> str:
-    """I.3 매트릭스로 최종 등급을 결정론적으로 산정. 알 수 없으면 안전하게 '관망'.
+def apply_numeric_gates(grade: str, per, drop, cal: dict) -> str:
+    """history 캘리브레이션 수치로 등급을 타이트하게 보정(이슈 1·6).
 
-    자본보존 가드: Moat질이 약화/훼손이면 신규매수 적기·매수 고려가 절대 안 나오도록 재강제.
+    cal(티커별): per_reliable, per_cheap, per_rich, dd_typical, dd_shallow (일부 None 허용).
+    drop = drop_from_high_pct(음수, 0에 가까울수록 고점), per = 현재 PER.
+
+    - Gate A (dip 확인): '신규매수 적기'는 실제 dip(낙폭 ≤ dd_typical)이고 PER froth가 아닐 때만 유지.
+      아니면 1노치 강등 → 고점 근처/고평가에서 남발되던 '적기'를 억제.
+    - Gate B (froth 가드): 매수 등급인데 고점 근처(낙폭 ≥ dd_shallow) + PER rich면 추가 1노치 강등.
+    캘리브레이션이 없으면(cal 비어있음) 원 등급을 그대로 반환(하위호환).
+    """
+    if not cal:
+        return grade
+    dd_typ = cal.get("dd_typical")
+    dd_shal = cal.get("dd_shallow")
+    per_rich = cal.get("per_rich") if cal.get("per_reliable") else None
+
+    if grade == "신규매수 적기":
+        dip_ok = True
+        if drop is not None and dd_typ is not None and drop > dd_typ:
+            dip_ok = False  # 낙폭이 typical보다 얕음(고점 근처) → dip 아님
+        if per_rich is not None and per is not None and per > per_rich:
+            dip_ok = False  # 밸류 froth
+        if not dip_ok:
+            grade = _downgrade(grade, 1)
+
+    if grade in ("신규매수 적기", "매수 고려"):
+        near_high = drop is not None and dd_shal is not None and drop >= dd_shal
+        rich = per_rich is not None and per is not None and per > per_rich
+        if near_high and rich:
+            grade = _downgrade(grade, 1)
+
+    return grade
+
+
+def compute_grade(moat_q: str, valuation_bucket: str, per=None, drop=None, cal: dict = None) -> str:
+    """I.3 매트릭스로 최종 등급을 결정론적으로 산정 후, history 수치 게이트로 타이트하게 보정.
+
+    자본보존 백스톱: Moat질이 약화/훼손이면 매수 등급이 절대 안 나오도록 재강제.
+    파싱 실패(축 미상)는 무경고 폴백 대신 경고를 남기고 안전하게 '관망'(이슈 3·5).
     """
     mq = _norm_moat_q(moat_q)
     vb = _norm_valuation(valuation_bucket)
     if mq is None or vb is None:
+        print(
+            f"[daily_moat] 등급 축 파싱 실패 → 관망 폴백 (Moat질={moat_q!r}, 밸류={valuation_bucket!r})",
+            file=sys.stderr,
+        )
         return "관망"
     grade = GRADE_MATRIX.get((mq, vb), "관망")
+    # 자본보존 백스톱 — 매트릭스가 향후 수정돼도 약화/훼손은 매수 등급 불가(현재는 매트릭스상 inert).
     if mq in ("약화", "훼손") and grade in ("신규매수 적기", "매수 고려"):
         grade = "회피" if mq == "훼손" else "관망"
+    grade = apply_numeric_gates(grade, per, drop, cal or {})
     return grade
 
 
@@ -443,6 +526,7 @@ def main() -> int:
     tz = cfg.get("schedule", {}).get("timezone", "Asia/Seoul")
     detail_weekday = cfg.get("schedule", {}).get("detail_weekday", 6)  # 6=일요일
     chunk_size = cfg.get("schedule", {}).get("summary_chunk_size", 5)
+    calibration = load_calibration()
     date = today_str(tz)
 
     now = datetime.now(ZoneInfo(tz))
@@ -515,15 +599,23 @@ def main() -> int:
             continue
 
         parsed = parse_output(raw)
-        # 최종 등급은 Python 매트릭스가 authoritative (작업 I.3)
-        grade = compute_grade(parsed["moat_q"], parsed["valuation_bucket"])
+        # 최종 등급 = Python 매트릭스 + history 수치 게이트가 authoritative (작업 I.3, 이슈 1)
+        row = fund_by_ticker.get(ticker) or {}
+        grade = compute_grade(
+            parsed["moat_q"],
+            parsed["valuation_bucket"],
+            per=row.get("per"),
+            drop=row.get("drop_from_high_pct"),
+            cal=ticker_calibration(calibration, ticker),
+        )
 
         # 월간 .md date 헤더에 보정 후 최종 등급 부가
         path = append_monthly(ticker, date, raw, grade)
         if path not in saved_paths:
             saved_paths.append(path)
 
-        flag = not is_stable(parsed)
+        # [!] 승격: 호재/악재가 있거나(뉴스), 강한 등급(신규매수 적기/회피)이면 요약 상단으로 (이슈 2)
+        flag = (not is_stable(parsed)) or (grade in STRONG_GRADES)
         results.append({
             "ticker": ticker,
             "parsed": parsed,
