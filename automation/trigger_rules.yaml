@@ -1,0 +1,95 @@
+# trigger_rules.yaml — 낙폭 트리거 임계 룰 (Task M)
+#
+# 손으로 관리하는 파일. calibration.yaml(recalibrate.py가 자동 재생성)과 달리 덮어써지지 않는다.
+# 근거 산출: automation/src/tools/dd_calibration.py  (재실행해서 아래 evidence 갱신)
+#
+# 설계 원칙: 구조(structure)마다 하방 캡처율이 달라서, 같은 임계를 써도 실제 알림 빈도와
+# "언더라잉이 얼마나 빠졌을 때 울리는지"가 달라진다. 트래커의 알림 부담(연 5~11회)을
+# 기준선으로 잡고 구조별로 맞춘다.
+
+meta:
+  updated: "2026-08-15"
+  tool: "automation/src/tools/dd_calibration.py"
+  basis: "전월말 종가 대비 / 월 단위 de-dup / auto_adjust=True(분배금 재투자, yf history 기본값)"
+  caveat: >-
+    커버드콜 표본은 2~4년으로 전부 상승장이다. 하락장 NAV 침식은 미검증이며 상승캡처 우위도
+    국면 산물일 수 있다. QLD 깊은 낙폭 표본은 20년간 5건으로 통계적으로 약하다.
+    첫 가이드라인일 뿐이며 라이브 데이터가 쌓이면 재보정한다.
+
+# ── 구조별 낙폭 임계 (전월말 종가 대비, 음수) ──────────────────────────
+thresholds:
+  tracker:      [-0.03, -0.05, -0.07, -0.10]
+  dividend:     [-0.03, -0.05, -0.07, -0.10]
+  # 커버드콜: 트래커와 동일 임계를 그대로 쓴다.
+  #   하락캡처가 0.68~0.81x라 같은 임계면 알림이 트래커의 69~90% 빈도로만 울리고,
+  #   울릴 때는 언더라잉이 1.3배 더 깊이 빠진 상황 → 동일 임계 자체가 중복 제거 필터로 작동.
+  #   임의 상수를 새로 만들 근거가 없어 트래커와 통일.
+  covered_call: [-0.03, -0.05, -0.07, -0.10]
+  # 레버리지: 하락캡처 2.12x. 트래커 임계를 쓰면 연 15.7회로 거의 매달 울린다.
+  #   캡처 환산(-6.4/-10.6/-14.8/-21.2)과 빈도 정합(-7/-12/-16/-21)이 독립적으로 일치.
+  leveraged:    [-0.07, -0.12, -0.16, -0.21]
+
+# 메시지 헤더 "⚠️ {종류} · {대상}"의 대상 라벨
+scope_label:
+  tracker: "지수"
+  dividend: "지수"
+  covered_call: "커버드콜"
+  leveraged: "레버리지"
+
+# ── QLD 라운드트립 경보 (ATH·진입가 기준 — 낙폭 경보와 성격이 다른 별도 트리거) ──
+# 규칙 자체는 todo.md K.6에서 확정, index_daily.qld_signal이 상태를 관리한다.
+# 트리거는 state를 읽기만 하고 쓰지 않는다(07:00 index_daily와 쓰기 충돌 방지).
+qld_roundtrip:
+  enabled: true
+  instrument: "QLD"
+  entry_levels: [-0.35, -0.40, -0.45]   # ATH 대비 진입 알림/분할 구간
+  stop_loss_pct: -0.18                  # 진입가 대비 손절선
+  state_path: "indices/QLD/state.yaml"  # 읽기 전용
+  # 레벨별 메시지 각주 — evidence.qld_ath_episodes.conditional_deepening과 같이 갱신할 것
+  entry_notes:
+    "-0.35": "전량 진입 금물 — 과거 -35% 도달 5건 전부(100%)가 -40%까지 진행"
+    "-0.40": "과거 -40% 도달 5건 중 3건(60%)이 -45%까지 진행"
+    "-0.45": "과거 -45% 도달 3건 전부(100%)가 -50%까지 진행 — 바닥 아님"
+
+# ── 근거 (dd_calibration.py 산출값) ─────────────────────────────────
+evidence:
+  downside_capture:      # 언더라잉이 내린 달의 낙폭 배율
+    JEPQ: 0.68
+    QQQI: 0.73
+    GPIQ: 0.77
+    SPYI: 0.72
+    GPIX: 0.81
+    458760.KS: 0.25      # 환 상쇄 지배(원화 비헤지) — SCHD -12%급이라야 -3% 도달
+    0008S0.KS: 0.25
+    QLD: 2.12
+  upside_capture:        # 전 종목이 하락캡처보다 높다 = 비대칭 유리(표본 한계 있음)
+    JEPQ: 0.72
+    QQQI: 0.79
+    GPIQ: 0.85
+    SPYI: 0.75
+    GPIX: 0.87
+    458760.KS: 0.58
+    0008S0.KS: 0.52
+  nav_recovery_1y:       # -3% 돌파 후 1년 내 원가격(NAV) baseline 복귀율 — 분배금 착시 배제
+    QQQ: 0.89
+    SPY: 0.90
+    JEPQ: 0.95
+    QQQI: 0.92
+    GPIQ: 0.92
+    SPYI: 1.00
+    GPIX: 1.00
+  alerts_per_year:       # 실제 텔레그램 메시지 수(레벨 순차 돌파 합산), 최근 3년
+    QLD_leveraged_rule: 9.0
+    QLD_tracker_rule: 15.7
+    QQQ: 11.0
+    SPY: 6.7
+    SCHD: 4.7
+  qld_ath_episodes:      # 20.1년(2006~2026), ATH 회복으로 에피소드 구분
+    reach_-20pct: {count: 15, period_years: 1.3, median_recovery_days: 82}
+    reach_-30pct: {count: 6, period_years: 3.3, median_recovery_days: 132}
+    reach_-35pct: {count: 5, period_years: 4.0, median_recovery_days: 137}
+    reach_-45pct: {count: 3, period_years: 6.7, median_recovery_days: 514}
+    conditional_deepening:   # 도달 시 추가 5%p 심화 확률
+      from_-30pct: 0.83
+      from_-35pct: 1.00      # 5건 전부 -40%까지 진행 → -35% 전량 진입은 금물
+      from_-45pct: 1.00      # -45%도 바닥이 아니다
