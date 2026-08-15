@@ -1,0 +1,140 @@
+# instruments.yaml — 지수/ETF 유니버스 (Task K.1)
+#
+# 주식 moat 트랙과 분리된 index 레인의 대상 목록.
+# 각 항목: id, yf_symbol, structure, tracks, currency, hedged, valuation_source
+#
+# structure(유형): tracker(지수추종) / dividend(배당) / covered_call(커버드콜) / leveraged(레버리지)
+# valuation_source: 밸류(PER) 상속 원천 티커. null=self(자체 산출).
+#   가격·낙폭·MA·52주위치·타이밍은 상속 금지 — 반드시 자기 시계열로 계산 (K.2).
+# hedged: 낙폭 해석 주석용 (헤지=지수+비용, 비헤지=지수±환).
+
+instruments:
+  # ── 미국 (yfinance PER 나옴) ──────────────────────────────
+  - id: "SPYM"
+    yf_symbol: "SPYM"
+    structure: tracker
+    tracks: SP500
+    currency: USD
+    hedged: false
+    valuation_source: null        # self
+
+  - id: "QQQM"
+    yf_symbol: "QQQM"
+    structure: tracker
+    tracks: NDX100
+    currency: USD
+    hedged: false
+    valuation_source: null        # self
+
+  - id: "SCHD"
+    yf_symbol: "SCHD"
+    structure: dividend
+    tracks: US_DIV_DJ100
+    currency: USD
+    hedged: false
+    valuation_source: null        # self
+
+  - id: "JEPQ"
+    yf_symbol: "JEPQ"
+    structure: covered_call
+    tracks: NDX100
+    currency: USD
+    hedged: false
+    valuation_source: "QQQM"
+
+  - id: "SPYI"
+    yf_symbol: "SPYI"
+    structure: covered_call
+    tracks: SP500
+    currency: USD
+    hedged: false
+    valuation_source: "SPYM"
+
+  - id: "QQQI"
+    yf_symbol: "QQQI"
+    structure: covered_call
+    tracks: NDX100
+    currency: USD
+    hedged: false
+    valuation_source: "QQQM"
+
+  - id: "GPIX"
+    yf_symbol: "GPIX"
+    structure: covered_call
+    tracks: SP500
+    currency: USD
+    hedged: false
+    valuation_source: "SPYM"
+
+  - id: "GPIQ"
+    yf_symbol: "GPIQ"
+    structure: covered_call
+    tracks: NDX100
+    currency: USD
+    hedged: false
+    valuation_source: "QQQM"
+
+  - id: "QLD"
+    yf_symbol: "QLD"
+    structure: leveraged
+    tracks: "NDX100 x2"
+    currency: USD
+    hedged: false
+    valuation_source: "QQQM"
+
+  # ── 한국 (.KS — yfinance 가격만, PER·yield=None → 상속) ────
+  - id: "360750"
+    yf_symbol: "360750.KS"
+    structure: tracker
+    tracks: SP500
+    currency: KRW
+    hedged: false
+    valuation_source: "SPYM"
+
+  - id: "448290"
+    yf_symbol: "448290.KS"
+    structure: tracker
+    tracks: SP500
+    currency: KRW
+    hedged: true
+    valuation_source: "SPYM"
+
+  - id: "449180"
+    yf_symbol: "449180.KS"
+    structure: tracker
+    tracks: SP500
+    currency: KRW
+    hedged: true
+    valuation_source: "SPYM"
+
+  - id: "449190"
+    yf_symbol: "449190.KS"
+    structure: tracker
+    tracks: NDX100
+    currency: KRW
+    hedged: true
+    valuation_source: "QQQM"
+
+  - id: "458730"
+    yf_symbol: "458730.KS"
+    structure: dividend
+    tracks: US_DIV_DJ100
+    currency: KRW
+    hedged: false
+    valuation_source: "SCHD"
+
+  - id: "458760"
+    yf_symbol: "458760.KS"
+    structure: covered_call
+    tracks: US_DIV_DJ100
+    currency: KRW
+    hedged: false
+    valuation_source: "SCHD"
+
+  - id: "0008S0"
+    yf_symbol: "0008S0.KS"
+    structure: covered_call
+    tracks: US_DIV_DJ100
+    currency: KRW
+    hedged: false
+    valuation_source: "SCHD"

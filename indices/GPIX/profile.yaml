@@ -1,0 +1,11 @@
+# GPIX — index 레인 프로필 (Task K)
+id: "GPIX"
+yf_symbol: "GPIX"
+name: "GPIX"                    # K.1은 별도 이름 컬럼 없음 — ID를 이름으로 사용
+structure: covered_call
+tracks: SP500
+valuation_source: "SPYM"
+currency: USD
+hedged: false
+notes: >-
+  SP500 추종 커버드콜 ETF. 밸류(PER)는 SPYM에서 상속, 가격·낙폭·MA·52주위치는 자기 시계열로 계산(K.2). 분배율·NAV는 첫날부터 수집. upside cap 주의(등급식은 tracker와 동일, K.5).

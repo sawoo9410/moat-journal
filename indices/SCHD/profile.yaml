@@ -1,0 +1,11 @@
+# SCHD — index 레인 프로필 (Task K)
+id: "SCHD"
+yf_symbol: "SCHD"
+name: "SCHD"                    # K.1은 별도 이름 컬럼 없음 — ID를 이름으로 사용
+structure: dividend
+tracks: US_DIV_DJ100
+valuation_source: null  # self
+currency: USD
+hedged: false
+notes: >-
+  US_DIV_DJ100 추종 배당 ETF. PER 자체 산출(valuation_source=self).

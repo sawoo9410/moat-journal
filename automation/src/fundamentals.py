@@ -4,6 +4,7 @@
 폴백 체인(전부 무료): yfinance → stooq(가격/52주) → Finnhub(선택 키) → FMP(선택 키).
 필드 단위는 모든 소스에서 동일하게 정규화: ROE/Margin/배당=%, D/E=비율.
 """
+import datetime
 import os
 import time
 
@@ -290,6 +291,229 @@ def fetch_all(tickers: list) -> list:
         if i + 1 < len(tickers):
             time.sleep(0.4)
     return rows
+
+
+# ---------------------------------------------------------------------------
+# 지수/ETF 트랙 (index 레인) — Task K
+#   주식 moat 함수(위)는 불변. 아래는 지수/ETF 전용 수집.
+#   yfinance history 로 price/52주고점/MA/낙폭, .info 로 PER,
+#   .dividends 로 분배율(TTM/ann) 직접 계산. KR 등은 PER=None → 상속.
+# ---------------------------------------------------------------------------
+
+# self 를 뜻하는 valuation_source 표기(프로필/표에서 다양하게 올 수 있음)
+_SELF_MARKERS = ("", "self", "(self)", "none", "null")
+
+
+def _is_self_source(vs) -> bool:
+    """valuation_source 값이 self(상속 없음)를 뜻하는지."""
+    if vs is None:
+        return True
+    try:
+        return str(vs).strip().lower() in _SELF_MARKERS
+    except Exception:
+        return True
+
+
+def _profile_ticker(profile: dict) -> str:
+    """프로필의 안정적 식별자(ticker 우선, 없으면 yf_symbol)."""
+    return profile.get("ticker") or profile.get("yf_symbol") or ""
+
+
+def _dividends_in_window(divs, ref_date: "datetime.datetime", days: int) -> list:
+    """분배 시계열에서 ref_date 기준 최근 `days`일 이내의 (날짜, 금액) 리스트.
+
+    divs: yf.Ticker().dividends (pandas Series) 또는 items() 지원 매핑.
+    양수 금액만, tz 정보는 제거하고 naive 비교.
+    """
+    out: list = []
+    if divs is None:
+        return out
+    try:
+        items = list(divs.items())
+    except Exception:
+        return out
+    cutoff = ref_date - datetime.timedelta(days=days)
+    upper = ref_date + datetime.timedelta(days=1)
+    for dt, amt in items:
+        try:
+            d = dt.to_pydatetime() if hasattr(dt, "to_pydatetime") else dt
+            if getattr(d, "tzinfo", None) is not None:
+                d = d.replace(tzinfo=None)
+            a = float(amt)
+            if a > 0 and cutoff <= d <= upper:
+                out.append((d, a))
+        except Exception:
+            continue
+    return out
+
+
+def fetch_index_instrument(profile: dict) -> dict:
+    """지수/ETF 1종목 수집(모든 유형·KR 포함).
+
+    반환 dict 키:
+      ticker, price, per, dist_yield_ttm, dist_yield_ann,
+      drop_from_high_pct, ma50_gap_pct, ma200_gap_pct, currency, sources
+
+    - price: history(period="1y") 최근 종가
+    - drop_from_high_pct: (price/52주고점 - 1)*100
+    - ma50_gap_pct / ma200_gap_pct: (price/MA - 1)*100 (자기 종가 시계열)
+    - per: .info trailingPE (US ETF). KR 등 없으면 None → 상위에서 상속
+    - dist_yield_ttm: 최근 365일 분배금 합 / price * 100
+    - dist_yield_ann: 최근 분배 × 최근 365일 지급횟수 / price * 100
+    누락/예외는 None 처리 — 절대 예외로 중단하지 않는다.
+    """
+    sym = profile.get("yf_symbol")
+    row = {
+        "ticker": _profile_ticker(profile),
+        "price": None,
+        "per": None,
+        "dist_yield_ttm": None,
+        "dist_yield_ann": None,
+        "drop_from_high_pct": None,
+        "ma50_gap_pct": None,
+        "ma200_gap_pct": None,
+        "currency": profile.get("currency"),
+        "sources": [],
+    }
+    if yf is None or not sym:
+        return row
+
+    try:
+        tk = yf.Ticker(sym)
+    except Exception:
+        return row
+
+    price = None
+    ref_date = None
+
+    # 1) 가격 히스토리 → price / 52주고점 / MA50 / MA200
+    try:
+        hist = tk.history(period="1y")
+        if hist is not None and len(hist) > 0:
+            closes = [float(c) for c in hist["Close"].tolist() if c == c]  # NaN 제거
+            try:
+                highs = [float(h) for h in hist["High"].tolist() if h == h]
+            except Exception:
+                highs = []
+            if closes:
+                price = closes[-1]
+                row["price"] = round(price, 4)
+
+                hi_source = highs if highs else closes
+                week52_high = max(hi_source) if hi_source else None
+                if week52_high and week52_high > 0:
+                    row["drop_from_high_pct"] = round((price / week52_high - 1) * 100, 2)
+
+                if len(closes) >= 50:
+                    ma50 = sum(closes[-50:]) / 50.0
+                    if ma50 > 0:
+                        row["ma50_gap_pct"] = round((price / ma50 - 1) * 100, 2)
+                if len(closes) >= 200:
+                    ma200 = sum(closes[-200:]) / 200.0
+                    if ma200 > 0:
+                        row["ma200_gap_pct"] = round((price / ma200 - 1) * 100, 2)
+
+                # 분배 윈도우 기준일 = 마지막 거래일
+                try:
+                    last_idx = hist.index[-1]
+                    ref_date = (
+                        last_idx.to_pydatetime()
+                        if hasattr(last_idx, "to_pydatetime")
+                        else last_idx
+                    )
+                    if getattr(ref_date, "tzinfo", None) is not None:
+                        ref_date = ref_date.replace(tzinfo=None)
+                except Exception:
+                    ref_date = None
+
+                if "yfinance" not in row["sources"]:
+                    row["sources"].append("yfinance")
+    except Exception:
+        pass
+
+    if ref_date is None:
+        ref_date = datetime.datetime.now()
+
+    # 2) PER — .info trailingPE (US ETF). KR 등은 None → 상속 대상
+    try:
+        info = tk.info or {}
+        pe = info.get("trailingPE")
+        if pe is not None:
+            row["per"] = round(float(pe), 1)
+    except Exception:
+        pass
+
+    # 3) 분배율 — .info["yield"] 금지, 실제 .dividends 로 직접 계산
+    if price and price > 0:
+        try:
+            payments = _dividends_in_window(tk.dividends, ref_date, 365)
+            if payments:
+                ttm_sum = sum(a for _, a in payments)
+                count = len(payments)
+                latest_amt = max(payments, key=lambda x: x[0])[1]
+                row["dist_yield_ttm"] = round(ttm_sum / price * 100, 2)
+                row["dist_yield_ann"] = round(latest_amt * count / price * 100, 2)
+                if "dividends" not in row["sources"]:
+                    row["sources"].append("dividends")
+        except Exception:
+            pass
+
+    return row
+
+
+def _topo_order_indices(profiles: list) -> list:
+    """valuation_source 위상 정렬 — self(상속 없음) 먼저, 상속 종목 나중.
+
+    상속원(valuation_source)이 이번 유니버스에 있으면 그 종목을 먼저 수집해야
+    같은 수집분의 PER 를 상속할 수 있다. 사이클/누락 상속원은 안전하게 뒤로.
+    """
+    tickers = {_profile_ticker(p) for p in profiles}
+    remaining = list(profiles)
+    done: set = set()
+    ordered: list = []
+    changed = True
+    while remaining and changed:
+        changed = False
+        still: list = []
+        for p in remaining:
+            vs = p.get("valuation_source")
+            # self 이거나, 상속원이 유니버스 밖이거나, 이미 수집됨 → 지금 수집 가능
+            if _is_self_source(vs) or vs not in tickers or vs in done:
+                ordered.append(p)
+                done.add(_profile_ticker(p))
+                changed = True
+            else:
+                still.append(p)
+        remaining = still
+    # 사이클 등 남은 것은 원순서 그대로 뒤에 붙임(중단 방지)
+    ordered.extend(remaining)
+    return ordered
+
+
+def fetch_all_indices(profiles: list) -> list:
+    """지수/ETF 유니버스 일괄 수집. 반환 순서는 입력 profiles 순서 유지.
+
+    valuation_source 위상 정렬로 상속원을 먼저 수집한 뒤,
+    per=None 인 종목은 상속원의 이번 수집 PER 를 상속하고
+    sources 에 'per<-{SRC}' 를 남긴다.
+    """
+    ordered = _topo_order_indices(profiles)
+    results: dict = {}
+    for i, p in enumerate(ordered):
+        row = fetch_index_instrument(p)
+        vs = p.get("valuation_source")
+        if row.get("per") is None and not _is_self_source(vs) and vs in results:
+            src_per = results[vs].get("per")
+            if src_per is not None:
+                row["per"] = src_per
+                label = f"per<-{vs}"
+                if label not in row["sources"]:
+                    row["sources"].append(label)
+        results[_profile_ticker(p)] = row
+        if i + 1 < len(ordered):
+            time.sleep(0.4)  # Yahoo 보호용 짧은 sleep
+    # 입력 순서로 재정렬해 반환
+    return [results[_profile_ticker(p)] for p in profiles]
 
 
 # ---------------------------------------------------------------------------
