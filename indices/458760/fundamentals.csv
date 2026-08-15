@@ -1,0 +1,2 @@
+date,price,per,dist_yield_ttm,dist_yield_ann,drop_from_high_pct,ma50_gap_pct,ma200_gap_pct,currency,source
+2026-08-15,11340.0,19.9,9.56,9.84,-3.08,-0.44,8.66,KRW,yfinance+dividends+per<-SCHD

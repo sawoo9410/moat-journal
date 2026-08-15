@@ -1,0 +1,2 @@
+date,price,per,dist_yield_ttm,dist_yield_ann,drop_from_high_pct,ma50_gap_pct,ma200_gap_pct,currency,source
+2026-08-15,301.01,31.3,0.43,0.47,-2.22,2.57,12.57,USD,yfinance+dividends
