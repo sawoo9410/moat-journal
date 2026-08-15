@@ -1,7 +1,7 @@
 # 458760 — index 레인 프로필 (Task K)
 id: "458760"
 yf_symbol: "458760.KS"
-name: "458760"                    # K.1은 별도 이름 컬럼 없음 — ID를 이름으로 사용
+name: "TIGER 미국배당다우존스타겟커버드콜"
 structure: covered_call
 tracks: US_DIV_DJ100
 valuation_source: "SCHD"

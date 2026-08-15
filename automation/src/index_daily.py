@@ -517,33 +517,74 @@ def _is_flagged(r: dict) -> bool:
     return r.get("grade") in STRONG_GRADES_INDEX
 
 
-def build_index_summary(date: str, results: list) -> list:
-    """Index Daily 요약. [!] 액션 종목 상단, 나머지는 등급만 나열."""
-    flagged = [r for r in results if _is_flagged(r)]
-    normal = [r for r in results if not _is_flagged(r) and not r.get("error")]
+def _structure_rank(structure: str) -> int:
+    """메시지 정렬 순서: 순수지수/배당 → 레버리지 → 커버드콜."""
+    return {"tracker": 0, "dividend": 0, "leveraged": 1, "covered_call": 2}.get(structure, 3)
+
+
+def _index_metrics_line(row: dict) -> str:
+    """요약 카드용 💰 주요 지표 1줄(간결). 판단(💬)보다 먼저 표시."""
+    if not row:
+        return ""
+
+    def fmt(v, suffix=""):
+        return f"{v}{suffix}" if v is not None else "N/A"
+
+    parts = [
+        f"PER {fmt(row.get('per'))}",
+        f"낙폭 {fmt(row.get('drop_from_high_pct'), '%')}",
+        f"MA200 {fmt(row.get('ma200_gap_pct'), '%')}",
+    ]
+    dist = row.get("dist_yield_ttm")
+    if dist:  # 분배율 있는 종목(배당/커버드콜)만
+        parts.append(f"분배 {fmt(dist, '%')}")
+    cur = row.get("currency")
+    if cur and cur != "USD":
+        parts.append(cur)
+    return "💰 " + " · ".join(parts)
+
+
+def build_index_summary(date: str, results: list, chunk_size: int = 5) -> list:
+    """Index Daily 요약. 종목마다 💰 주요 지표 → 💬 판단(등급+종합평가)을 표시(주식 moat 밀도).
+
+    액션 종목([!], QLD 신호/강한 등급)을 상단으로 정렬하고 chunk_size개씩 메시지 분할.
+    """
+    ok = [r for r in results if not r.get("error")]
     errored = [r for r in results if r.get("error")]
+    # 유형 순: 순수지수/배당 → 레버리지 → 커버드콜, 그룹 내 액션 종목 먼저
+    ok.sort(key=lambda r: (_structure_rank(r.get("structure")), 0 if _is_flagged(r) else 1))
 
-    lines = [f"Index Daily — {date}", ""]
+    msgs: list = []
+    total = max(1, (len(ok) + chunk_size - 1) // chunk_size)
+    for i in range(0, len(ok), chunk_size):
+        chunk = ok[i:i + chunk_size]
+        idx = i // chunk_size + 1
+        suffix = f" ({idx}/{total})" if total > 1 else ""
+        lines = [f"Index Daily — {date}{suffix}", ""]
+        for r in chunk:
+            mark = "[!] " if _is_flagged(r) else ""
+            nm = r.get("name")
+            head = r["ticker"] if not nm or nm == r["ticker"] else f"{nm} ({r['ticker']})"
+            lines.append(f"{mark}{head} · {r.get('grade', '')}")
+            metrics = _index_metrics_line(r.get("row") or {})
+            if metrics:
+                lines.append(f"  {metrics}")
+            if r.get("structure") == "leveraged":
+                info = r.get("qld_info") or {}
+                if info.get("note"):
+                    lines.append(f"  · {info['note']}")
+            comment = (r.get("parsed", {}) or {}).get("comment", "").strip()
+            if comment:
+                lines.append(f"  💬 {comment}")
+            lines.append("")
+        if idx == total and errored:
+            lines.append("⚠️ 분석 실패: " + ", ".join(r["ticker"] for r in errored))
+        msgs.append("\n".join(lines).strip() + "\n")
 
-    for r in flagged:
-        comment = (r.get("parsed", {}) or {}).get("comment", "").strip()
-        header = f"[!] {r['ticker']} — {r.get('grade', '')}"
-        lines.append(header)
-        if r.get("structure") == "leveraged":
-            info = r.get("qld_info") or {}
-            if info.get("note"):
-                lines.append(f"  · {info['note']}")
-        if comment:
-            lines.append(f"  {comment}")
-        lines.append("")
-
-    if normal:
-        labels = [f"{r['ticker']}·{r.get('grade', '')}" for r in normal]
-        lines.append("안정/관망: " + ", ".join(labels))
-    if errored:
-        lines.append("⚠️ 분석 실패: " + ", ".join(r["ticker"] for r in errored))
-
-    return ["\n".join(lines).strip() + "\n"]
+    if not ok:  # 전부 실패한 예외 케이스
+        body = "⚠️ 분석 실패: " + ", ".join(r["ticker"] for r in errored) if errored else "(결과 없음)"
+        msgs = [f"Index Daily — {date}\n\n{body}\n"]
+    return msgs
 
 
 def build_index_detail(date: str, r: dict) -> str:
@@ -672,12 +713,14 @@ def main() -> int:
 
         results.append({
             "ticker": inst_id,
+            "name": profile.get("name"),
             "structure": structure,
             "parsed": parsed,
             "grade": grade,
             "trend": trend,
             "valuation": val,
             "qld_info": qld_info,
+            "row": row,
         })
 
     # 4) 텔레그램 (target='index')

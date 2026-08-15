@@ -1,7 +1,7 @@
 # JEPQ — index 레인 프로필 (Task K)
 id: "JEPQ"
 yf_symbol: "JEPQ"
-name: "JEPQ"                    # K.1은 별도 이름 컬럼 없음 — ID를 이름으로 사용
+name: "JPMorgan 나스닥 프리미엄인컴"
 structure: covered_call
 tracks: NDX100
 valuation_source: "QQQM"

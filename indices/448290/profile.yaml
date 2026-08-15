@@ -1,7 +1,7 @@
 # 448290 — index 레인 프로필 (Task K)
 id: "448290"
 yf_symbol: "448290.KS"
-name: "448290"                    # K.1은 별도 이름 컬럼 없음 — ID를 이름으로 사용
+name: "TIGER 미국S&P500(H)"
 structure: tracker
 tracks: SP500
 valuation_source: "SPYM"

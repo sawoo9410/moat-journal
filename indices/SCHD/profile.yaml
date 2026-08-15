@@ -1,7 +1,7 @@
 # SCHD — index 레인 프로필 (Task K)
 id: "SCHD"
 yf_symbol: "SCHD"
-name: "SCHD"                    # K.1은 별도 이름 컬럼 없음 — ID를 이름으로 사용
+name: "Schwab 미국배당"
 structure: dividend
 tracks: US_DIV_DJ100
 valuation_source: null  # self
