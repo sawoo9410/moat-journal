@@ -42,14 +42,52 @@ scope_label:
 qld_roundtrip:
   enabled: true
   instrument: "QLD"
-  entry_levels: [-0.35, -0.40, -0.45]   # ATH 대비 진입 알림/분할 구간
   stop_loss_pct: -0.18                  # 진입가 대비 손절선
   state_path: "indices/QLD/state.yaml"  # 읽기 전용
-  # 레벨별 메시지 각주 — evidence.qld_ath_episodes.conditional_deepening과 같이 갱신할 것
-  entry_notes:
-    "-0.35": "전량 진입 금물 — 과거 -35% 도달 5건 전부(100%)가 -40%까지 진행"
-    "-0.40": "과거 -40% 도달 5건 중 3건(60%)이 -45%까지 진행"
-    "-0.45": "과거 -45% 도달 3건 전부(100%)가 -50%까지 진행 — 바닥 아님"
+  # ATH 기준 진입권 알림(-35/-40/-45)은 제거했다.
+  #   근거: 그 자리에서 매수 시 12개월 후 중앙 -1.8%, 승률 50%(-35%만 보면 -26%/33%).
+  #   아무 날이나 매수(+37.1%/81%)보다 크게 나쁘다. 진입 후 중앙 -34% 추가 하락.
+  #   극단 낙폭은 "싸진 것"이 아니라 "추세가 꺾인 것"이라 매수 신호로 쓸 수 없다.
+  #   손절만 남긴다 — 실패 시 평균 -39%라 자본보존 장치는 필요하다.
+
+# ── 청산 알림 ────────────────────────────────────────────────────
+# 전략: 알림에 고정금액 매수 → baseline(진입 당시 전월말 종가) 복귀 시 전량 청산.
+# 진입 시점의 baseline을 보존해야 한다(달이 바뀌면 baseline이 달라지므로).
+exit_alert:
+  enabled: true
+
+# ── 심화 확률 (Task M.7) ────────────────────────────────────────
+# "지금 살까, 더 기다릴까" 판단용. 알림 시점부터 baseline 복귀 전까지
+# 더 깊은 지점에 도달한 비율. 구간 중간지점(-9.5/-14/-18.5)을 포함한다.
+# 산출: dd_calibration.py deepen
+deepening:
+  QLD:
+    "-0.07":
+      n: 70
+      recover_immediately: 0.03        # 추가 하락 없이 바로 회복한 비율
+      probs: {"-0.095": 0.81, "-0.12": 0.73, "-0.14": 0.54,
+              "-0.16": 0.47, "-0.185": 0.41, "-0.21": 0.30}
+      # 조건 충족 시 '다음 중간지점(-9.5%)' 도달 확률. 미충족 시 값도 같이 둔다.
+      conditions:
+        - {key: near_ath, label: "ATH 대비 -20% 이내", p_yes: 0.89, p_no: 0.76, n_yes: 28}
+        - {key: vix_low,  label: "VIX < 25",          p_yes: 0.88, p_no: 0.71, n_yes: 41}
+        - {key: above_ma200, label: "MA200 위",        p_yes: 0.88, p_no: 0.75, n_yes: 33}
+      advice: {wait_to: -0.12, immediate_annual: 0.30, wait_annual: 0.47}
+    "-0.12":
+      n: 47
+      recover_immediately: 0.09
+      probs: {"-0.14": 0.77, "-0.16": 0.64, "-0.185": 0.55, "-0.21": 0.49}
+      # 이 단계에선 방향이 뒤집힌다 — '베어장 확인'이 심화 신호다.
+      conditions:
+        - {key: below_ma200, label: "MA200 아래", p_yes: 0.83, p_no: 0.65, n_yes: 29}
+        - {key: vol_high,    label: "변동성 높음", p_yes: 0.83, p_no: 0.65, n_yes: 29}
+      advice: {wait_to: -0.16, immediate_annual: 0.30, wait_annual: 0.39}
+    "-0.16":
+      n: 24
+      recover_immediately: 0.04
+      probs: {"-0.185": 0.88, "-0.21": 0.71}
+      conditions: []
+      advice: {wait_to: -0.21, immediate_annual: 0.22, wait_annual: 0.28}
 
 # ── 근거 (dd_calibration.py 산출값) ─────────────────────────────────
 evidence:
@@ -84,6 +122,24 @@ evidence:
     QQQ: 11.0
     SPY: 6.7
     SCHD: 4.7
+  roundtrip:             # 알림에 고정금액 매수 → baseline 복귀 청산. 미회복 건 포함 정직한 손익.
+    QLD:                 # 회복률 / 기대수익 / 실패시 손익 / 평균보유일 / 연환산
+      "-0.07": {recover: 0.91, ev: 0.049, fail: -0.390, days: 54, annual: 0.25}
+      "-0.12": {recover: 0.84, ev: 0.061, fail: -0.406, days: 74, annual: 0.22}
+      "-0.16": {recover: 0.74, ev: 0.042, fail: -0.442, days: 103, annual: 0.11}
+      "-0.21": {recover: 0.60, ev: 0.068, fail: -0.298, days: 132, annual: 0.13}
+    tracker:             # 트래커는 연 3~10% — buy&hold(SPY 연 10.9%)보다 못하다.
+      "-0.03": {recover: 0.92, ev: 0.019, fail: -0.199, days: 50, annual: 0.10}
+      "-0.05": {recover: 0.84, ev: 0.010, fail: -0.261, days: 74, annual: 0.03}
+      "-0.07": {recover: 0.79, ev: 0.018, fail: -0.228, days: 94, annual: 0.05}
+      "-0.10": {recover: 0.75, ev: 0.028, fail: -0.288, days: 105, annual: 0.07}
+    note: >-
+      커버드콜은 77건 전부 회복해 실패 표본이 0건 — 4년 상승장 산물이라 수치를 신뢰할 수 없다.
+      알림은 받되 판단은 데이터가 쌓인 뒤로 미룬다.
+  wait_vs_immediate:     # QLD, 알림마다 100만원 고정, 20년 총손익
+    "-0.07": {immediate: 5286285, wait_mid: 6761808, wait_next: 8281502}
+    "-0.12": {immediate: 5285904, wait_mid: 6195097, wait_next: 6773384}
+    "-0.16": {immediate: 3167696, wait_mid: 3945930, wait_next: 4211220}
   qld_ath_episodes:      # 20.1년(2006~2026), ATH 회복으로 에피소드 구분
     reach_-20pct: {count: 15, period_years: 1.3, median_recovery_days: 82}
     reach_-30pct: {count: 6, period_years: 3.3, median_recovery_days: 132}

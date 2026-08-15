@@ -241,8 +241,55 @@ def cmd_match():
         print(f"{a:<12}({n:>3}개월)  " + "  ".join(cells))
 
 
+def cmd_deepen(ticker="QLD", thresholds=None):
+    """'지금 살까 더 기다릴까' — 알림 후 baseline 복귀 전까지 더 깊이 간 비율.
+
+    trigger_rules.yaml의 `deepening` 블록 근거. 구간 중간지점을 포함해 센다.
+    """
+    ths = thresholds or [-0.07, -0.12, -0.16, -0.21]
+    # 관찰 지점 = 임계 + 인접 임계 사이의 중간지점 전부
+    mids = [round((ths[i] + ths[i + 1]) / 2, 4) for i in range(len(ths) - 1)]
+    points = sorted(set(ths + mids), reverse=True)
+    nxt = {t: [p for p in points if p < t] for t in ths[:-1]}
+
+    px = load(ticker)
+    vals, idx = px.values, px.index
+    pos = {d: i for i, d in enumerate(idx)}
+    evs = []
+    for base, cur in month_frames(px):
+        done = None
+        for d, p in zip(cur.index, cur.values):
+            br = [t for t in ths if p / base - 1.0 <= t]
+            if not br:
+                continue
+            lv = min(br)
+            if done is not None and lv >= done:
+                continue
+            done = lv
+            i0 = pos[d]
+            seg = vals[i0:i0 + 504]
+            hit = np.argmax(seg >= base) if (seg >= base).any() else None
+            win = seg[:hit + 1] if hit is not None else seg
+            evs.append({"level": lv, "min_dd": float(win.min() / base - 1.0)})
+
+    print("=" * 84)
+    print(f"{ticker} — 알림 후 어디까지 더 빠졌나 (baseline 복귀 전까지)")
+    print("=" * 84)
+    for lv in ths[:-1]:
+        sub = [e for e in evs if e["level"] == lv]
+        if len(sub) < 5:
+            continue
+        print(f"\n[{int(lv*100)}% 알림 {len(sub)}건]")
+        for t in nxt[lv]:
+            p = 100.0 * np.mean([e["min_dd"] <= t for e in sub])
+            tag = " ← 구간 중간" if t not in ths else ""
+            print(f"   {t*100:>6.1f}% 도달 {p:>5.0f}%{tag}")
+        ri = 100.0 * np.mean([e["min_dd"] > lv - 0.005 for e in sub])
+        print(f"   추가 하락 없이 회복 {ri:>5.0f}%")
+
+
 CMDS = {"freq": cmd_freq, "capture": cmd_capture, "recovery": cmd_recovery,
-        "ath": cmd_ath, "match": cmd_match}
+        "ath": cmd_ath, "match": cmd_match, "deepen": cmd_deepen}
 
 
 def main():

@@ -6,8 +6,13 @@
     leveraged(QLD)                : -7/-12/-16/-21%  (하락캡처 2.12x 보정)
   커버드콜을 트래커와 같은 임계로 두는 건 근거가 있다 — 하락캡처가 0.68~0.81x라 같은 임계면
   트래커의 69~90% 빈도로만 울리고, 울릴 때는 언더라잉이 1.3배 더 깊이 빠진 상황이다.
-- QLD는 낙폭 경보와 별개로 라운드트립 경보(ATH -35/-40/-45% 진입권, 진입가 -18% 손절)도 보낸다.
-  "뭔 일 났나"(낙폭)와 "실행하라"(진입/손절)는 성격이 다르므로 헤더로 구분한다.
+- 전략: 알림에 고정금액 매수 → baseline(진입 당시 전월말 종가) 복귀 시 전량 청산.
+  그래서 청산 알림(✅)을 함께 보낸다. 보유분은 진입 시점 baseline을 목표가로 보존한다
+  (달이 바뀌면 baseline이 달라지므로 월 리셋에서 지우면 안 된다).
+- QLD 알림에는 "지금 살까 더 기다릴까" 심화 확률을 붙인다. -7% 알림 후 -9.5%까지
+  더 빠질 확률이 81%, 추가 하락 없이 회복은 3%뿐이라 대기가 유리하다(20년 실측).
+  MA200·ATH 대비·VIX로 조건부 확률을 골라 함께 싣는다.
+- QLD 손절(진입가 -18%)은 자본보존 전용으로 유지. ATH 기준 진입권 알림은 제거했다.
 - 기준: 전월 마지막 거래일 종가. 현재가는 fast_info 최신값(15:15 KST 실행 시 KR은 라이브, US는 전일 종가).
 - de-dup: 이번 달에 이미 알린 임계보다 더 깊어질 때만 1회 알림. 매달 초 리셋. state=indices/trigger_state.yaml.
 - 07:00 index_daily(매수권장)와 분리된 별도 잡(15:15 KST).
@@ -86,7 +91,87 @@ def load_rules() -> dict:
         "thresholds": {k: [float(x) for x in v] for k, v in th.items()},
         "scope_label": data.get("scope_label") or FALLBACK_SCOPE,
         "qld": data.get("qld_roundtrip") or {},
+        "deepening": data.get("deepening") or {},
+        "exit_alert": (data.get("exit_alert") or {}).get("enabled", False),
     }
+
+
+def fetch_indicators(yf_symbol: str) -> dict:
+    """알림 시점 지표 — MA200 상/하, ATH 대비 낙폭. 돌파한 종목만 호출한다."""
+    try:
+        hist = yf.Ticker(yf_symbol).history(period="max")["Close"].dropna()
+    except Exception:
+        return {}
+    if hist is None or len(hist) < 200:
+        return {}
+    cur = float(hist.iloc[-1])
+    vol = hist.pct_change().rolling(20).std().iloc[-1]
+    return {
+        "above_ma200": cur > float(hist.rolling(200).mean().iloc[-1]),
+        "ath_dd": cur / float(hist.max()) - 1.0,
+        "vol20": float(vol) * (252 ** 0.5) if vol == vol else None,
+    }
+
+
+def fetch_vix() -> Optional[float]:
+    try:
+        h = yf.Ticker("^VIX").history(period="1mo")["Close"].dropna()
+        return float(h.iloc[-1]) if len(h) else None
+    except Exception:
+        return None
+
+
+def deepening_lines(iid: str, level: float, rules: dict, ind: dict, vix: Optional[float]) -> list:
+    """'지금 살까 더 기다릴까' 블록. 해당 종목·레벨 확률표가 없으면 빈 리스트."""
+    tbl = (rules.get("deepening") or {}).get(iid, {})
+    row = tbl.get(f"{level:.2f}") or tbl.get(str(level))
+    if not row:
+        return []
+
+    probs = row.get("probs") or {}
+    parts = [f"{float(k)*100:.1f}% {float(v)*100:.0f}%" for k, v in probs.items()]
+    out = ["", "📊 여기서 더 빠질 확률", "   " + " · ".join(parts)]
+    ri = row.get("recover_immediately")
+    if ri is not None:
+        out.append(f"   그냥 회복 {float(ri)*100:.0f}%")
+
+    # 관측 지표로 조건부 확률 선택
+    obs, hits = [], []
+    if ind.get("above_ma200") is not None:
+        obs.append("MA200 " + ("위" if ind["above_ma200"] else "아래"))
+    if ind.get("ath_dd") is not None:
+        obs.append(f"ATH {ind['ath_dd']*100:+.1f}%")
+    if vix is not None:
+        obs.append(f"VIX {vix:.0f}")
+    if obs:
+        out += ["", "🔎 " + " · ".join(obs)]
+
+    for c in row.get("conditions") or []:
+        key, met = c.get("key"), None
+        if key == "near_ath" and ind.get("ath_dd") is not None:
+            met = ind["ath_dd"] > -0.20
+        elif key == "above_ma200" and ind.get("above_ma200") is not None:
+            met = ind["above_ma200"]
+        elif key == "below_ma200" and ind.get("above_ma200") is not None:
+            met = not ind["above_ma200"]
+        elif key == "vix_low" and vix is not None:
+            met = vix < 25
+        elif key == "vol_high" and ind.get("vol20") is not None:
+            met = ind["vol20"] >= 0.45   # 연율 실현변동성 45% — 표본 중앙값
+        if met is None:
+            continue
+        # 키 이름 주의: YAML 1.1이 yes/no를 불리언으로 파싱하므로 p_yes/p_no를 쓴다.
+        p = float(c["p_yes"] if met else c["p_no"])
+        hits.append(f"   {c['label']}{'' if met else ' 아님'} → {p*100:.0f}%")
+    if hits:
+        out += ["   ─ 조건부 심화 확률"] + hits
+
+    adv = row.get("advice") or {}
+    if adv.get("wait_to") is not None:
+        out += ["", "⏳ 대기 권장",
+                f"   즉시 매수 연 {float(adv.get('immediate_annual',0))*100:.0f}%"
+                f" vs {float(adv['wait_to'])*100:.0f}% 대기 연 {float(adv.get('wait_annual',0))*100:.0f}%"]
+    return out
 
 
 def load_instruments() -> list:
@@ -173,7 +258,7 @@ def fetch_reason(tracks: str, drop: float, prev_date, now: datetime) -> Optional
     return line[:120] or None
 
 
-def build_message(hit: dict, reason: Optional[str]) -> str:
+def build_message(hit: dict, reason: Optional[str], extra: Optional[list] = None) -> str:
     lines = [
         f"⚠️ 낙폭 · {hit['scope']}",
         "━━━━━━━━━━━━━━━━",
@@ -185,14 +270,36 @@ def build_message(hit: dict, reason: Optional[str]) -> str:
         f"  ({hit['drop'] * 100:+.1f}%)",
         f"   {hit['prev_date']:%-m/%-d} 종가 대비 · {hit['note']}",
     ]
+    if extra:
+        lines += extra
     if reason:
         lines += ["", f"💬 {reason}"]
     return "\n".join(lines)
 
 
+def build_exit_message(iid: str, name: str, lot: dict, cur: float, currency: str) -> str:
+    """목표가(진입 당시 baseline) 복귀 — 청산 신호."""
+    base = float(lot["baseline"])
+    levels = ", ".join(f"{int(float(l)*100)}%" for l in lot.get("levels", []))
+    gain = base / float(lot.get("entry_ref", base)) - 1.0 if lot.get("entry_ref") else None
+    lines = [
+        f"✅ 청산 · {iid}",
+        "━━━━━━━━━━━━━━━━",
+        f"  {name} ({iid})",
+        f"  목표가 복귀 — 전량 청산",
+        "━━━━━━━━━━━━━━━━",
+        "",
+        f"📈 {fmt_price(cur, currency)} · 목표 {fmt_price(base, currency)}",
+        f"   {lot.get('since', '?')} {levels} 알림분",
+    ]
+    if gain is not None:
+        lines.append(f"   최초 진입가 기준 {gain*100:+.1f}%")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
-# QLD 라운드트립 경보 (Task M.4) — 낙폭 경보와 성격이 다른 별도 트리거
-#   진입권: ATH 대비 -35/-40/-45% 도달 / 손절: 진입가 대비 -18% 이탈
+# QLD 손절 경보 (Task M.4) — 자본보존 전용
+#   ATH 기준 진입권 알림은 제거했다(매수 신호로 근거 없음 — trigger_rules.yaml 주석 참조).
 #   indices/QLD/state.yaml은 07:00 index_daily가 쓴다 — 여기서는 읽기만 한다.
 # ---------------------------------------------------------------------------
 
@@ -222,7 +329,6 @@ def qld_roundtrip(cfg: dict, qstate: dict):
         return [], qstate
 
     iid = cfg.get("instrument", "QLD")
-    levels = sorted(float(x) for x in cfg.get("entry_levels") or [])   # 깊은 순(-0.45 먼저)
     stop_pct = float(cfg.get("stop_loss_pct", -0.18))
 
     prof = load_profile(iid)
@@ -242,33 +348,6 @@ def qld_roundtrip(cfg: dict, qstate: dict):
 
     msgs = []
     qstate = dict(qstate or {})
-
-    # 새 ATH 갱신 = 직전 에피소드 종료 → 진입권 de-dup 리셋
-    if qstate.get("episode_ath") is None or ath > float(qstate["episode_ath"]) + 1e-9:
-        qstate["episode_ath"] = ath
-        qstate["ath_level"] = None
-
-    dd = cur / ath - 1.0
-    breached = [L for L in levels if dd <= L]
-    level = min(breached) if breached else None
-    prev = qstate.get("ath_level")
-    if level is not None and (prev is None or level < float(prev)):
-        qstate["ath_level"] = level
-        notes = cfg.get("entry_notes") or {}
-        note = notes.get(f"{level:.2f}") or notes.get(str(level))
-        body = [
-            f"🚨 진입권 · {iid}",
-            "━━━━━━━━━━━━━━━━",
-            f"  {prof.get('name') or iid} ({iid})",
-            f"  ATH 대비 {int(level * 100)}% 도달",
-            "━━━━━━━━━━━━━━━━",
-            "",
-            f"📉 {ath:,.2f} → {cur:,.2f}  ({dd * 100:+.1f}%)",
-            "   전고점 대비 · 분할 진입 구간",
-        ]
-        if note:
-            body += ["", f"📊 {note}"]
-        msgs.append("\n".join(body))
 
     # 손절 — 보유 중일 때만. 포지션이 바뀌면 재무장.
     entry = pos.get("entry_price")
@@ -306,12 +385,15 @@ def main() -> int:
     rules = load_rules()
     state = load_state()
     if state.get("month") != month_key:   # 매달 리셋
-        # QLD 라운드트립 상태는 에피소드가 달을 넘기므로 월 리셋에서 보존한다.
-        state = {"month": month_key, "alerted": {}, "qld": state.get("qld", {})}
+        # QLD 손절 상태와 미청산 보유분(open)은 달을 넘기므로 월 리셋에서 보존한다.
+        state = {"month": month_key, "alerted": {},
+                 "qld": state.get("qld", {}), "open": state.get("open", {})}
     alerted = state.setdefault("alerted", {})
+    open_lots = state.setdefault("open", {})
 
     insts = [i for i in load_instruments() if i.get("structure") in rules["thresholds"]]
     fired = []   # dict 목록 — 종목당 개별 메시지로 전송
+    exits = []   # 목표가 복귀한 보유분
     for inst in insts:
         iid = inst.get("id") or inst.get("ticker")
         struct = inst.get("structure")
@@ -329,6 +411,16 @@ def main() -> int:
             print(f"  {name} ({iid}, {struct} {th}%): 전월말 {prev_close:.2f} → 현재 {cur:.2f} "
                   f"= {drop*100:+.2f}% | 돌파 {int(level*100) if level else '-'}%")
             continue
+        # 청산 판정 — 진입 당시 baseline(목표가)에 복귀했나. 알림 발생과 무관하게 매번 확인.
+        if rules["exit_alert"]:
+            for lot in list(open_lots.get(iid, [])):
+                if cur >= float(lot["baseline"]):
+                    exits.append({"id": iid, "name": name, "lot": lot, "cur": cur,
+                                  "currency": inst.get("currency", "USD")})
+                    open_lots[iid].remove(lot)
+            if not open_lots.get(iid):
+                open_lots.pop(iid, None)
+
         if level is None:
             continue
         prev_level = alerted.get(iid)   # 이번 달 이미 알린 최심 임계(음수) 또는 None
@@ -340,21 +432,38 @@ def main() -> int:
                 "note": currency_note(inst),
                 "tracks": inst.get("tracks") or "",
                 "scope": rules["scope_label"].get(struct, "지수"),
+                "yf_symbol": inst.get("yf_symbol", iid),
             })
             alerted[iid] = level
+            # 보유분 기록 — 같은 baseline(같은 달)이면 한 묶음으로 합친다.
+            if rules["exit_alert"]:
+                lots = open_lots.setdefault(iid, [])
+                same = next((l for l in lots
+                             if abs(float(l["baseline"]) - prev_close) < 1e-6), None)
+                if same:
+                    same.setdefault("levels", []).append(level)
+                else:
+                    lots.append({"baseline": prev_close, "levels": [level],
+                                 "since": now.strftime("%Y-%m-%d"), "entry_ref": cur})
 
     if dry:
         return 0
 
-    # QLD 라운드트립 (ATH 진입권 / 진입가 손절) — 낙폭 경보와 독립적으로 판정
+    # 청산 알림 먼저 — 목표가 복귀는 즉시 실행 신호다.
+    for ex in exits:
+        m = build_exit_message(ex["id"], ex["name"], ex["lot"], ex["cur"], ex["currency"])
+        ok = telegram_bot.send_message(m, target="alert")
+        print(f"[trigger] {ex['id']} 청산 알림 전송 {'성공' if ok else '실패'}")
+
+    # QLD 손절 — 낙폭 경보와 독립적으로 판정
     rt_msgs, state["qld"] = qld_roundtrip(rules["qld"], state.get("qld", {}))
     for m in rt_msgs:
         ok = telegram_bot.send_message(m, target="alert")
-        print(f"[trigger] 라운드트립 전송 {'성공' if ok else '실패'}: {m.splitlines()[0]}")
+        print(f"[trigger] 손절 경보 전송 {'성공' if ok else '실패'}: {m.splitlines()[0]}")
 
     if not fired:
-        print(f"[trigger] 신규 돌파 없음 (라운드트립 {len(rt_msgs)}건)")
-        save_state(state)   # 월 리셋·라운드트립 state 반영 위해 저장
+        print(f"[trigger] 신규 돌파 없음 (청산 {len(exits)}건, 손절 {len(rt_msgs)}건)")
+        save_state(state)   # 월 리셋·open·손절 state 반영 위해 저장
         return 0
 
     fired.sort(key=lambda h: h["drop"])   # 낙폭 깊은 순
@@ -366,11 +475,19 @@ def main() -> int:
         if tk not in reasons:
             reasons[tk] = fetch_reason(tk, hit["drop"], hit["prev_date"], now)
 
+    # 심화 확률 블록은 확률표가 있는 종목만 — 지표 조회도 그때만 한다.
+    vix = fetch_vix() if any(hit["id"] in (rules.get("deepening") or {}) for hit in fired) else None
     for hit in fired:
-        ok = telegram_bot.send_message(build_message(hit, reasons.get(hit["tracks"])), target="alert")
+        extra = []
+        if hit["id"] in (rules.get("deepening") or {}):
+            ind = fetch_indicators(hit["yf_symbol"])
+            extra = deepening_lines(hit["id"], hit["level"], rules, ind, vix)
+        ok = telegram_bot.send_message(
+            build_message(hit, reasons.get(hit["tracks"]), extra), target="alert")
         print(f"[trigger] {hit['id']} 전송 {'성공' if ok else '실패'} ({hit['drop']*100:+.1f}%)")
 
-    print(f"[trigger] {len(fired)}건 알림 전송 (사유 {len(reasons)}회 생성, 라운드트립 {len(rt_msgs)}건)")
+    print(f"[trigger] {len(fired)}건 알림 전송 "
+          f"(사유 {len(reasons)}회, 청산 {len(exits)}건, 손절 {len(rt_msgs)}건)")
     save_state(state)
     return 0
 
