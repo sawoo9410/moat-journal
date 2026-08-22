@@ -1,2 +1,9 @@
 date,price,per,dist_yield_ttm,dist_yield_ann,drop_from_high_pct,ma50_gap_pct,ma200_gap_pct,currency,source
 2026-08-15,17415.0,26.2,0.92,0.92,-0.11,3.76,9.88,KRW,yfinance+dividends+per<-SPYM
+2026-08-16,17415.0,26.2,0.92,0.92,-0.11,3.76,9.88,KRW,yfinance+dividends+per<-SPYM
+2026-08-17,17415.0,26.2,0.92,0.92,-0.11,3.76,9.88,KRW,yfinance+dividends+per<-SPYM
+2026-08-18,17415.0,26.0,0.92,0.92,-0.11,3.76,9.88,KRW,yfinance+dividends+per<-SPYM
+2026-08-19,17215.0,25.9,0.93,0.93,-1.26,2.52,8.55,KRW,yfinance+dividends+per<-SPYM
+2026-08-20,17150.0,25.9,0.93,0.93,-1.63,2.06,8.08,KRW,yfinance+dividends+per<-SPYM
+2026-08-21,17235.0,25.7,0.93,0.93,-1.15,2.49,8.55,KRW,yfinance+dividends+per<-SPYM
+2026-08-22,17075.0,25.8,0.94,0.94,-2.06,1.47,7.49,KRW,yfinance+dividends+per<-SPYM
