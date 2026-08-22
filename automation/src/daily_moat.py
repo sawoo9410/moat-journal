@@ -350,6 +350,18 @@ def git_commit(date: str, paths: list[Path]) -> None:
 def main() -> int:
     cfg = load_yaml_config()
     tickers: list[str] = cfg["tickers"]
+
+    # --only TICKER[,TICKER...] — 부분 재실행.
+    # 토큰 만료 등으로 일부 종목만 실패했을 때 성공분을 중복 기록하지 않고 복구하기 위한 것.
+    if "--only" in sys.argv:
+        want = [t.strip().upper() for t in sys.argv[sys.argv.index("--only") + 1].split(",") if t.strip()]
+        unknown = [t for t in want if t not in [x.upper() for x in tickers]]
+        if unknown:
+            print(f"[daily_moat] config에 없는 종목: {', '.join(unknown)}", file=sys.stderr)
+            return 1
+        tickers = [t for t in tickers if t.upper() in want]
+        print(f"[daily_moat] --only: {', '.join(tickers)} 만 실행", file=sys.stderr)
+
     tz = cfg.get("schedule", {}).get("timezone", "Asia/Seoul")
     detail_weekday = cfg.get("schedule", {}).get("detail_weekday", 6)  # 6=일요일
     chunk_size = cfg.get("schedule", {}).get("summary_chunk_size", 5)

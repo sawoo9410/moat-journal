@@ -46,11 +46,14 @@ print(d['accessToken'], d.get('expiresAt', 0))
 
   now_ms="$(/opt/homebrew/bin/python3 -c "import time; print(int(time.time()*1000))")"
 
-  if [ "$expires_at" -gt "$now_ms" ] 2>/dev/null; then
+  # "지금 안 만료됐나"가 아니라 "이 작업이 끝날 때까지 버티나"를 본다. (daily_moat.sh 주석 참조)
+  local margin_ms=$(( ${TOKEN_MARGIN_MIN:-30} * 60 * 1000 ))
+
+  if [ "$expires_at" -gt "$(( now_ms + margin_ms ))" ] 2>/dev/null; then
     echo "[wrapper] OAuth 토큰 유효 (expires in $(( (expires_at - now_ms) / 60000 ))분)" >&2
     export CLAUDE_CODE_OAUTH_TOKEN="$token"
   else
-    echo "[wrapper] OAuth 토큰 만료 — claude CLI로 갱신 시도" >&2
+    echo "[wrapper] OAuth 토큰 잔여 부족(<${TOKEN_MARGIN_MIN:-30}분) — claude CLI로 갱신 시도" >&2
     # 토큰 없이 claude 한 번 실행 → CLI가 Keychain에서 refreshToken으로 자동 갱신
     claude --print -p "ping" >/dev/null 2>&1 || true
     # 갱신된 토큰 재추출

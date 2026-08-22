@@ -668,8 +668,22 @@ def main() -> int:
     # 3) 프롬프트 템플릿
     template = PROMPT_PATH.read_text(encoding="utf-8")
 
+    # --only ID[,ID...] — 부분 재실행(토큰 만료 등으로 일부만 실패했을 때 복구용).
+    # 수집(2단계)은 전체로 돌려야 한다 — valuation_source 상속이 원천 종목을 필요로 하므로
+    # 여기 분석 루프에서만 걸러낸다.
+    analyze = instruments
+    if "--only" in sys.argv:
+        want = {t.strip().upper() for t in sys.argv[sys.argv.index("--only") + 1].split(",") if t.strip()}
+        known = {str(i.get("ticker")).upper() for i in instruments}
+        unknown = want - known
+        if unknown:
+            print(f"[index_daily] instruments에 없는 종목: {', '.join(sorted(unknown))}", file=sys.stderr)
+            return 1
+        analyze = [i for i in instruments if str(i.get("ticker")).upper() in want]
+        print(f"[index_daily] --only: {', '.join(str(i.get('ticker')) for i in analyze)} 만 분석", file=sys.stderr)
+
     results = []
-    for inst in instruments:
+    for inst in analyze:
         inst_id = inst.get("ticker")
         structure = inst.get("structure")
         row = row_by_id.get(inst_id) or {}
