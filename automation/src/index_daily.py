@@ -544,41 +544,65 @@ def _index_metrics_line(row: dict) -> str:
     return "💰 " + " · ".join(parts)
 
 
-def build_index_summary(date: str, results: list, chunk_size: int = 5) -> list:
-    """Index Daily 요약. 종목마다 💰 주요 지표 → 💬 판단(등급+종합평가)을 표시(주식 moat 밀도).
+def _stable_label_index(r: dict) -> str:
+    """안정 종목 라벨에 등급 부가: '360750·관망' (주식 _stable_label과 동일 규칙)."""
+    g = r.get("grade")
+    return f"{r['ticker']}·{g}" if g else r["ticker"]
 
-    액션 종목([!], QLD 신호/강한 등급)을 상단으로 정렬하고 chunk_size개씩 메시지 분할.
+
+def build_index_summary(date: str, results: list, chunk_size: int = 5) -> list:
+    """Index Daily 요약 — 주식 moat 룰(build_summary_chunks)과 동일한 형태.
+
+    액션 종목([!], QLD 신호/강한 등급)만 본문에 싣고, 나머지는 '안정:' 한 줄로 압축한다.
+    종목마다 별도 메시지를 보내지 않는다 — 같은 벤치마크를 추종하는 ETF는 판단 근거가
+    겹쳐서 개별 카드가 중복이 된다(주식 쪽도 detail 전송은 중단된 상태).
     """
     ok = [r for r in results if not r.get("error")]
     errored = [r for r in results if r.get("error")]
-    # 유형 순: 순수지수/배당 → 레버리지 → 커버드콜, 그룹 내 액션 종목 먼저
-    ok.sort(key=lambda r: (_structure_rank(r.get("structure")), 0 if _is_flagged(r) else 1))
+    # 유형 순: 순수지수/배당 → 레버리지 → 커버드콜
+    flagged = sorted((r for r in ok if _is_flagged(r)),
+                     key=lambda r: _structure_rank(r.get("structure")))
+    stable = sorted((r for r in ok if not _is_flagged(r)),
+                    key=lambda r: _structure_rank(r.get("structure")))
+
+    def _tail(lines: list) -> None:
+        if stable:
+            lines.append("안정: " + ", ".join(_stable_label_index(r) for r in stable))
+        if errored:
+            lines.append("⚠️ 분석 실패: " + ", ".join(r["ticker"] for r in errored))
+
+    # [!] 0개 — 전 종목 안정
+    if not flagged:
+        lines = [f"Index Daily — {date}", ""]
+        _tail(lines)
+        return ["\n".join(lines).strip() + "\n"]
 
     msgs: list = []
-    total = max(1, (len(ok) + chunk_size - 1) // chunk_size)
-    for i in range(0, len(ok), chunk_size):
-        chunk = ok[i:i + chunk_size]
+    total = max(1, (len(flagged) + chunk_size - 1) // chunk_size)
+    for i in range(0, len(flagged), chunk_size):
+        chunk = flagged[i:i + chunk_size]
         idx = i // chunk_size + 1
         suffix = f" ({idx}/{total})" if total > 1 else ""
         lines = [f"Index Daily — {date}{suffix}", ""]
         for r in chunk:
-            mark = "[!] " if _is_flagged(r) else ""
             nm = r.get("name")
             head = r["ticker"] if not nm or nm == r["ticker"] else f"{nm} ({r['ticker']})"
-            lines.append(f"{mark}{head} · {r.get('grade', '')}")
+            grade = r.get("grade")
+            lines.append(f"━ {head}" + (f" · {grade}" if grade else "") + " ━")
+            # 지수 레인은 가격·낙폭이 판단 근거라 지표 한 줄은 유지한다(뉴스·출처는 월간 md에만).
             metrics = _index_metrics_line(r.get("row") or {})
             if metrics:
-                lines.append(f"  {metrics}")
+                lines.append(metrics)
             if r.get("structure") == "leveraged":
                 info = r.get("qld_info") or {}
                 if info.get("note"):
-                    lines.append(f"  · {info['note']}")
+                    lines.append(f"· {info['note']}")
             comment = (r.get("parsed", {}) or {}).get("comment", "").strip()
             if comment:
-                lines.append(f"  💬 {comment}")
+                lines.append(comment)
             lines.append("")
-        if idx == total and errored:
-            lines.append("⚠️ 분석 실패: " + ", ".join(r["ticker"] for r in errored))
+        if idx == total:
+            _tail(lines)
         msgs.append("\n".join(lines).strip() + "\n")
 
     if not ok:  # 전부 실패한 예외 케이스
@@ -737,12 +761,16 @@ def main() -> int:
             "row": row,
         })
 
-    # 4) 텔레그램 (target='index')
+    # 4) 텔레그램 (target='index') — 요약만. 주식 moat 룰과 동일하게 종목별 개별 카드는
+    #    전송하지 않는다(같은 벤치마크 추종 ETF는 근거가 겹쳐 중복이 됨).
+    #    build_index_detail은 아래 로그 기록용으로만 유지.
     for msg in build_index_summary(date, results):
         telegram_bot.send_message(msg, target="index")
+
     for r in results:
         if _is_flagged(r):
-            telegram_bot.send_message(build_index_detail(date, r), target="index")
+            print(f"[index_daily] detail (텔레그램 미전송)\n{build_index_detail(date, r)}",
+                  file=sys.stderr)
 
     # 5) git 커밋 — 기본 비활성(실제 커밋은 사람이). INDEX_AUTOCOMMIT=1이면 자동.
     if os.environ.get("INDEX_AUTOCOMMIT") == "1":
